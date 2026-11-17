@@ -1,0 +1,23 @@
+import '@fontsource/caveat/400.css';
+import '@fontsource/caveat/600.css';
+import '@fontsource/caveat/700.css';
+import '@fontsource/cormorant-garamond/400.css';
+import '@fontsource/cormorant-garamond/600.css';
+import '@fontsource/cormorant-garamond/700.css';
+import '@fontsource/lora/400.css';
+import '@fontsource/lora/600.css';
+import '@fontsource/lora/700.css';
+import '@fontsource/comfortaa/400.css';
+import '@fontsource/comfortaa/500.css';
+import '@fontsource/comfortaa/600.css';
+import '@fontsource/comfortaa/700.css';
+import '@fontsource/manrope/400.css';
+import '@fontsource/manrope/500.css';
+import '@fontsource/manrope/600.css';
+import '@fontsource/manrope/700.css';
+import '@fontsource/manrope/800.css';
+import { createRoot } from 'react-dom/client';
+import App from './App.tsx';
+import './index.css';
+
+createRoot(document.getElementById('root')!).render(<App />);

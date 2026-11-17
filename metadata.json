@@ -1,0 +1,6 @@
+{
+  "name": "GiftLab — Созвездие пожеланий",
+  "description": "Веб-конструктор интерактивных 3D-подарков и космических созвездий с личными посланиями, иллюстрациями и автономным экспортом в ZIP.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
