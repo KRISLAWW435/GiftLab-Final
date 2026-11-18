@@ -7,6 +7,7 @@ import {
 } from './components/PreviewWorkspace';
 import { ProjectStart } from './components/ProjectStart';
 import { RecipientView } from './components/RecipientView';
+import { useFullscreen } from './hooks/useFullscreen';
 import {
   cleanupUnusedProjectAudio,
   cleanupUnusedProjectImages,
@@ -349,6 +350,7 @@ function PreviewIframeHost({
 }
 
 function StudioApp() {
+  useFullscreen({ autoOnFirstInteraction: true });
   const [projects, setProjects] = useState<ConstellationProject[]>([]);
   const [loading, setLoading] = useState(true);
   const [screen, setScreen] = useState<AppScreen>('start');

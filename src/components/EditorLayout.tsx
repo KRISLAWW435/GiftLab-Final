@@ -642,20 +642,18 @@ export function EditorLayout({
               <button
                 type="button"
                 data-testid="editor-fullscreen-btn"
+                data-fullscreen-toggle="true"
                 onClick={() => void toggleFullscreen()}
                 aria-pressed={isFullscreen}
                 aria-label={isFullscreen ? 'Выйти из полного экрана' : 'На весь экран'}
                 title={isFullscreen ? 'Выйти из полного экрана' : 'На весь экран'}
-                className="gl-btn-secondary !min-h-[32px] !px-2.5 !py-1 text-xs text-gl-text whitespace-nowrap shrink-0"
+                className="gl-btn-icon !min-w-[32px] !min-h-[32px] !w-[32px] !h-[32px] !p-0 text-gl-text shrink-0"
               >
                 {isFullscreen ? (
                   <Minimize className="w-3.5 h-3.5 shrink-0" />
                 ) : (
                   <Maximize className="w-3.5 h-3.5 shrink-0" />
                 )}
-                <span className="hidden sm:inline">
-                  {isFullscreen ? 'Выйти из полного экрана' : 'На весь экран'}
-                </span>
               </button>
 
               <button
@@ -693,6 +691,7 @@ export function EditorLayout({
             <PreviewWorkspace
               embedded
               project={project}
+              initialDevice={cardDevice}
               saveState={saveState}
               returnLabel="Вернуться к редактированию"
               onExitPreview={() => goToStep(lastEditStep)}

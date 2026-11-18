@@ -21,6 +21,7 @@ export { getPreviewProjectRegistry, type PreviewDeviceId, type PreviewProjectMap
 
 interface PreviewWorkspaceProps {
   project: ConstellationProject;
+  initialDevice?: PreviewDeviceId;
   saveState?: 'saved' | 'saving';
   returnLabel: string;
   embedded?: boolean;
@@ -29,12 +30,14 @@ interface PreviewWorkspaceProps {
 
 export function PreviewWorkspace({
   project,
+  initialDevice,
   returnLabel,
   embedded = false,
   onExitPreview,
 }: PreviewWorkspaceProps) {
   const [device, setDevice] = useState<PreviewDeviceId>(() =>
-    typeof window !== 'undefined' && window.innerWidth < 768 ? 'phone' : 'desktop',
+    initialDevice ??
+    (typeof window !== 'undefined' && window.innerWidth < 768 ? 'phone' : 'desktop'),
   );
   const [sessionKey, setSessionKey] = useState(0);
   const { isFullscreen, notice, dismissNotice, toggleFullscreen } = useFullscreen();
@@ -64,60 +67,61 @@ export function PreviewWorkspace({
             type="button"
             data-testid="preview-return-btn"
             onClick={onExitPreview}
-            className="inline-flex items-center gap-1.5 min-h-[34px] px-3 py-1.5 rounded-full backdrop-blur-md bg-[#0b0816]/45 hover:bg-[#0b0816]/68 border border-white/15 hover:border-white/30 text-xs font-medium text-white/95 shadow-[0_8px_24px_rgba(0,0,0,0.4)] transition-all cursor-pointer max-w-[36vw] sm:max-w-none"
+            className="inline-flex items-center gap-1.5 min-h-[34px] px-3 py-1.5 rounded-full backdrop-blur-md bg-[#0b0816]/45 hover:bg-[#0b0816]/68 border border-white/15 hover:border-white/30 text-xs font-medium text-white/95 shadow-[0_8px_24px_rgba(0,0,0,0.4)] transition-all cursor-pointer max-w-[42vw] sm:max-w-none"
           >
             <ArrowLeft className="w-3.5 h-3.5 shrink-0" />
             <span className="truncate">{returnLabel}</span>
           </button>
         </div>
 
-        {/* Top-Center: Phone / Desktop Switcher */}
-        <div
-          role="group"
-          aria-label="Выбор устройства для предпросмотра"
-          className="pointer-events-auto inline-flex items-center gap-1 p-1 rounded-full backdrop-blur-md bg-[#0b0816]/45 border border-white/15 shadow-[0_8px_24px_rgba(0,0,0,0.4)] shrink-0"
-        >
-          <button
-            type="button"
-            data-testid="preview-device-phone"
-            onClick={() => setDevice('phone')}
-            aria-pressed={device === 'phone'}
-            data-selected={device === 'phone'}
-            className={`min-h-[28px] px-2.5 sm:px-3 py-1 rounded-full text-xs font-semibold inline-flex items-center gap-1.5 transition-all cursor-pointer ${
-              device === 'phone'
-                ? 'bg-gradient-to-r from-violet-600/85 to-purple-500/85 text-white shadow-[0_2px_10px_rgba(139,92,246,0.45)]'
-                : 'text-white/75 hover:text-white hover:bg-white/10'
-            }`}
-          >
-            <Smartphone className="w-3.5 h-3.5 shrink-0" />
-            <span className="hidden sm:inline">Телефон</span>
-          </button>
-
-          <button
-            type="button"
-            data-testid="preview-device-desktop"
-            onClick={() => setDevice('desktop')}
-            aria-pressed={device === 'desktop'}
-            data-selected={device === 'desktop'}
-            className={`min-h-[28px] px-2.5 sm:px-3 py-1 rounded-full text-xs font-semibold inline-flex items-center gap-1.5 transition-all cursor-pointer ${
-              device === 'desktop'
-                ? 'bg-gradient-to-r from-violet-600/85 to-purple-500/85 text-white shadow-[0_2px_10px_rgba(139,92,246,0.45)]'
-                : 'text-white/75 hover:text-white hover:bg-white/10'
-            }`}
-          >
-            <Monitor className="w-3.5 h-3.5 shrink-0" />
-            <span className="hidden sm:inline">Компьютер</span>
-          </button>
-        </div>
-
-        {/* Top-Right: Restart + Fullscreen */}
+        {/* Top-Right: Icon-only Device Switcher + Restart + Icon-only Fullscreen */}
         <div className="pointer-events-auto flex items-center gap-1.5 shrink-0">
+          <div
+            role="group"
+            aria-label="Выбор устройства для предпросмотра"
+            className="inline-flex items-center gap-0.5 p-1 rounded-full backdrop-blur-md bg-[#0b0816]/45 border border-white/15 shadow-[0_8px_24px_rgba(0,0,0,0.4)] shrink-0"
+          >
+            <button
+              type="button"
+              data-testid="preview-device-phone"
+              onClick={() => setDevice('phone')}
+              aria-pressed={device === 'phone'}
+              data-selected={device === 'phone'}
+              aria-label="Телефон"
+              title="Телефон"
+              className={`w-7 h-7 rounded-full inline-flex items-center justify-center transition-all cursor-pointer ${
+                device === 'phone'
+                  ? 'bg-gradient-to-r from-violet-600/85 to-purple-500/85 text-white shadow-[0_2px_10px_rgba(139,92,246,0.45)]'
+                  : 'text-white/75 hover:text-white hover:bg-white/10'
+              }`}
+            >
+              <Smartphone className="w-3.5 h-3.5 shrink-0" />
+            </button>
+
+            <button
+              type="button"
+              data-testid="preview-device-desktop"
+              onClick={() => setDevice('desktop')}
+              aria-pressed={device === 'desktop'}
+              data-selected={device === 'desktop'}
+              aria-label="Компьютер"
+              title="Компьютер"
+              className={`w-7 h-7 rounded-full inline-flex items-center justify-center transition-all cursor-pointer ${
+                device === 'desktop'
+                  ? 'bg-gradient-to-r from-violet-600/85 to-purple-500/85 text-white shadow-[0_2px_10px_rgba(139,92,246,0.45)]'
+                  : 'text-white/75 hover:text-white hover:bg-white/10'
+              }`}
+            >
+              <Monitor className="w-3.5 h-3.5 shrink-0" />
+            </button>
+          </div>
+
           <button
             type="button"
             data-testid="preview-restart-btn"
             onClick={handleRestartScenario}
             title="Запустить сценарий подарка с начала"
-            className="inline-flex items-center gap-1.5 min-h-[34px] px-2.5 sm:px-3 py-1.5 rounded-full backdrop-blur-md bg-[#0b0816]/45 hover:bg-[#0b0816]/68 border border-white/15 hover:border-white/30 text-xs font-medium text-white/95 shadow-[0_8px_24px_rgba(0,0,0,0.4)] transition-all cursor-pointer shrink-0"
+            className="inline-flex items-center justify-center gap-1.5 min-h-[34px] px-2.5 sm:px-3 py-1.5 rounded-full backdrop-blur-md bg-[#0b0816]/45 hover:bg-[#0b0816]/68 border border-white/15 hover:border-white/30 text-xs font-medium text-white/95 shadow-[0_8px_24px_rgba(0,0,0,0.4)] transition-all cursor-pointer shrink-0"
           >
             <RotateCcw className="w-3.5 h-3.5 shrink-0" />
             <span className="hidden sm:inline">С начала</span>
@@ -126,20 +130,18 @@ export function PreviewWorkspace({
           <button
             type="button"
             data-testid="preview-fullscreen-btn"
+            data-fullscreen-toggle="true"
             onClick={() => void toggleFullscreen()}
             aria-pressed={isFullscreen}
             aria-label={isFullscreen ? 'Выйти из полного экрана' : 'На весь экран'}
             title={isFullscreen ? 'Выйти из полного экрана' : 'На весь экран'}
-            className="inline-flex items-center gap-1.5 min-h-[34px] px-2.5 sm:px-3 py-1.5 rounded-full backdrop-blur-md bg-[#0b0816]/45 hover:bg-[#0b0816]/68 border border-white/15 hover:border-white/30 text-xs font-medium text-white/95 shadow-[0_8px_24px_rgba(0,0,0,0.4)] transition-all cursor-pointer shrink-0 whitespace-nowrap"
+            className="inline-flex items-center justify-center w-[34px] h-[34px] rounded-full backdrop-blur-md bg-[#0b0816]/45 hover:bg-[#0b0816]/68 border border-white/15 hover:border-white/30 text-white/95 shadow-[0_8px_24px_rgba(0,0,0,0.4)] transition-all cursor-pointer shrink-0"
           >
             {isFullscreen ? (
               <Minimize className="w-3.5 h-3.5 shrink-0" />
             ) : (
               <Maximize className="w-3.5 h-3.5 shrink-0" />
             )}
-            <span className="hidden md:inline">
-              {isFullscreen ? 'Выйти из полного экрана' : 'На весь экран'}
-            </span>
           </button>
         </div>
       </div>

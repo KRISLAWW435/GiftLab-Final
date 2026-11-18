@@ -197,12 +197,17 @@ export function RecipientView({
   const finaleHeaderRef = useRef<HTMLElement | null>(null);
   const storyInlineInputRef = useRef<HTMLInputElement | null>(null);
   const storyInlineTextareaRef = useRef<HTMLTextAreaElement | null>(null);
+  const isInternalPreview =
+    typeof window !== 'undefined' &&
+    new URLSearchParams(window.location.search).get('giftlabPreview') === '1';
   const {
     isFullscreen,
     notice: fullscreenNotice,
     dismissNotice: dismissFullscreenNotice,
     toggleFullscreen,
-  } = useFullscreen();
+  } = useFullscreen({
+    autoOnFirstInteraction: !editMode && !isInternalPreview,
+  });
 
   const [phase, setPhase] = useState<RecipientPhase>('sealed');
   const [activeIndex, setActiveIndex] = useState(0);
@@ -1529,33 +1534,29 @@ export function RecipientView({
   };
 
   const renderRecipientFullscreenButton = (options?: {
-    labelMode?: 'always' | 'responsive';
     pillStyle?: boolean;
   }) => {
     const label = isFullscreen ? 'Выйти из полного экрана' : 'На весь экран';
-    const labelMode = options?.labelMode ?? 'responsive';
     const pillStyle = options?.pillStyle ?? false;
     const icon = isFullscreen ? (
       <Minimize className="w-3.5 h-3.5 shrink-0" />
     ) : (
       <Maximize className="w-3.5 h-3.5 shrink-0" />
     );
-    const labelVisibilityClass =
-      labelMode === 'always' ? 'inline' : 'inline sm:hidden md:inline';
 
     if (pillStyle) {
       return (
         <button
           type="button"
           data-testid="recipient-fullscreen-btn"
+          data-fullscreen-toggle="true"
           onClick={() => void toggleFullscreen()}
           aria-pressed={isFullscreen}
           aria-label={label}
           title={label}
-          className="inline-flex items-center justify-center gap-1.5 h-9 sm:h-10 px-3 sm:px-3.5 rounded-full border backdrop-blur-md bg-[#0b0816]/60 border-white/25 text-white hover:bg-[#0b0816]/80 hover:border-white/45 transition-all shadow-lg cursor-pointer text-xs font-medium whitespace-nowrap shrink-0"
+          className="inline-flex items-center justify-center w-9 h-9 sm:w-10 sm:h-10 rounded-full border backdrop-blur-md bg-[#0b0816]/60 border-white/25 text-white hover:bg-[#0b0816]/80 hover:border-white/45 transition-all shadow-lg cursor-pointer shrink-0"
         >
           {icon}
-          <span className={labelVisibilityClass}>{label}</span>
         </button>
       );
     }
@@ -1564,14 +1565,14 @@ export function RecipientView({
       <button
         type="button"
         data-testid="recipient-fullscreen-btn"
+        data-fullscreen-toggle="true"
         onClick={() => void toggleFullscreen()}
         aria-pressed={isFullscreen}
         aria-label={label}
         title={label}
-        className="gl-btn-secondary !bg-gl-panel/85 hover:!bg-gl-card text-gl-text !px-3 !py-2 text-xs whitespace-nowrap shrink-0"
+        className="gl-btn-secondary !bg-gl-panel/85 hover:!bg-gl-card text-gl-text !w-9 !h-9 !min-h-[36px] !p-0 flex items-center justify-center shrink-0"
       >
         {icon}
-        <span className={labelVisibilityClass}>{label}</span>
       </button>
     );
   };
@@ -1776,34 +1777,21 @@ export function RecipientView({
             </div>
           )}
 
-          {(onExitPreview || !editMode) && (
-            <div className="relative z-30 flex items-center justify-between gap-2 mb-2 sm:mb-3 shrink-0">
-              <div className="pointer-events-auto">
-                {onExitPreview && (
-                  <button
-                    type="button"
-                    onClick={onExitPreview}
-                    className="gl-btn-secondary !bg-gl-panel/85 hover:!bg-gl-card text-gl-text !px-3 !py-2 text-xs"
-                  >
-                    <ArrowLeft className="w-3.5 h-3.5" />
-                    В редактор
-                  </button>
-                )}
-              </div>
-
-              {!editMode && (
-                <div className="pointer-events-auto shrink-0">
-                  {renderRecipientFullscreenButton({
-                    labelMode: 'always',
-                    pillStyle: true,
-                  })}
-                </div>
+          <header className="relative z-20 flex items-start justify-between gap-2 sm:gap-4">
+            <div className="pointer-events-auto w-9 sm:w-20 shrink-0 flex items-start">
+              {onExitPreview && (
+                <button
+                  type="button"
+                  onClick={onExitPreview}
+                  aria-label="В редактор"
+                  title="В редактор"
+                  className="gl-btn-secondary !bg-gl-panel/85 hover:!bg-gl-card text-gl-text !px-2.5 sm:!px-3 !py-2 text-xs whitespace-nowrap"
+                >
+                  <ArrowLeft className="w-3.5 h-3.5 shrink-0" />
+                  <span className="hidden sm:inline">В редактор</span>
+                </button>
               )}
             </div>
-          )}
-
-          <header className="relative z-20 flex items-start justify-between gap-4">
-            <div className="w-20 hidden sm:block" />
 
             <div
               data-testid="envelope-header-block"
@@ -1903,7 +1891,9 @@ export function RecipientView({
               )}
             </div>
 
-            <div className="w-20 hidden sm:block" />
+            <div className="pointer-events-auto w-9 sm:w-20 shrink-0 flex items-start justify-end">
+              {!editMode && renderRecipientFullscreenButton({ pillStyle: true })}
+            </div>
           </header>
 
           <div className="relative z-20 pointer-events-auto flex flex-col items-center gap-3 pb-4 sm:pb-6">
@@ -2041,8 +2031,7 @@ export function RecipientView({
                 </button>
               )}
 
-              {!editMode &&
-                renderRecipientFullscreenButton({ labelMode: 'responsive' })}
+              {!editMode && renderRecipientFullscreenButton()}
 
               <button
                 type="button"
@@ -2189,8 +2178,7 @@ export function RecipientView({
                 </button>
               )}
 
-              {!editMode &&
-                renderRecipientFullscreenButton({ labelMode: 'responsive' })}
+              {!editMode && renderRecipientFullscreenButton()}
 
               {!editMode && (
                 <button
@@ -2964,8 +2952,7 @@ export function RecipientView({
                 </button>
               )}
 
-              {!editMode &&
-                renderRecipientFullscreenButton({ labelMode: 'responsive' })}
+              {!editMode && renderRecipientFullscreenButton()}
 
               <button
                 type="button"
@@ -3001,7 +2988,7 @@ export function RecipientView({
               data-testid="constellation-finale-title"
               className={`pointer-events-none fixed inset-x-0 top-0 z-20 flex flex-col items-center text-center ${
                 !editMode
-                  ? 'px-4 md:px-72 pt-[max(3.75rem,calc(env(safe-area-inset-top,0px)+3.25rem))] md:pt-[max(1.25rem,env(safe-area-inset-top,0px))]'
+                  ? 'px-24 sm:px-32 pt-[max(1rem,env(safe-area-inset-top,0px))] sm:pt-[max(1.25rem,env(safe-area-inset-top,0px))]'
                   : 'px-16 sm:px-24 pt-[max(1rem,env(safe-area-inset-top,0px))] sm:pt-[max(1.25rem,env(safe-area-inset-top,0px))]'
               }`}
             >
@@ -3031,10 +3018,7 @@ export function RecipientView({
 
           {!editMode && (
             <div className="pointer-events-auto fixed top-[max(0.75rem,env(safe-area-inset-top,0px))] right-4 sm:top-[max(1.25rem,env(safe-area-inset-top,0px))] sm:right-6 z-30 flex items-center gap-2">
-              {renderRecipientFullscreenButton({
-                labelMode: 'always',
-                pillStyle: true,
-              })}
+              {renderRecipientFullscreenButton({ pillStyle: true })}
 
               <button
                 type="button"

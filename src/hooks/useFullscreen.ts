@@ -48,7 +48,18 @@ export function isFullscreenSupported(): boolean {
 const UNSUPPORTED_MESSAGE =
   'Полноэкранный режим не поддерживается этим браузером или ограничен настройками просмотра.';
 
-export function useFullscreen() {
+let firstInteractionAttempted = false;
+
+export interface UseFullscreenOptions {
+  autoOnFirstInteraction?: boolean;
+}
+
+export function resetFirstInteractionFullscreenForTests() {
+  firstInteractionAttempted = false;
+}
+
+export function useFullscreen(options?: UseFullscreenOptions) {
+  const autoOnFirstInteraction = options?.autoOnFirstInteraction ?? false;
   const [isFullscreen, setIsFullscreen] = useState<boolean>(
     () => getFullscreenElement() !== null,
   );
@@ -105,7 +116,6 @@ export function useFullscreen() {
     const onError = () => {
       clearVerifyTimer();
       setIsFullscreen(getFullscreenElement() !== null);
-      showNotice(UNSUPPORTED_MESSAGE);
     };
 
     document.addEventListener('fullscreenchange', syncState);
@@ -121,45 +131,56 @@ export function useFullscreen() {
       document.removeEventListener('fullscreenerror', onError);
       document.removeEventListener('webkitfullscreenerror', onError);
     };
-  }, [clearNoticeTimer, clearVerifyTimer, dismissNotice, showNotice]);
+  }, [clearNoticeTimer, clearVerifyTimer, dismissNotice]);
 
-  const enterFullscreen = useCallback(async () => {
-    if (!isFullscreenSupported()) {
-      setSupported(false);
-      setIsFullscreen(false);
-      showNotice(UNSUPPORTED_MESSAGE);
-      return;
-    }
+  const enterFullscreen = useCallback(
+    async (enterOptions?: { silent?: boolean }) => {
+      const silent = enterOptions?.silent ?? false;
 
-    const doc = document as FullscreenDocument;
-    const root = doc.documentElement as FullscreenElement;
-
-    try {
-      if (typeof root.requestFullscreen === 'function') {
-        await root.requestFullscreen();
-      } else if (typeof root.webkitRequestFullscreen === 'function') {
-        await Promise.resolve(root.webkitRequestFullscreen());
-      } else {
+      if (!isFullscreenSupported()) {
+        setSupported(false);
         setIsFullscreen(false);
-        showNotice(UNSUPPORTED_MESSAGE);
+        if (!silent) {
+          showNotice(UNSUPPORTED_MESSAGE);
+        }
         return;
       }
 
-      clearVerifyTimer();
-      verifyTimerRef.current = window.setTimeout(() => {
-        verifyTimerRef.current = null;
-        const active = getFullscreenElement() !== null;
-        setIsFullscreen(active);
-        if (!active) {
+      const doc = document as FullscreenDocument;
+      const root = doc.documentElement as FullscreenElement;
+
+      try {
+        if (typeof root.requestFullscreen === 'function') {
+          await root.requestFullscreen();
+        } else if (typeof root.webkitRequestFullscreen === 'function') {
+          await Promise.resolve(root.webkitRequestFullscreen());
+        } else {
+          setIsFullscreen(false);
+          if (!silent) {
+            showNotice(UNSUPPORTED_MESSAGE);
+          }
+          return;
+        }
+
+        clearVerifyTimer();
+        verifyTimerRef.current = window.setTimeout(() => {
+          verifyTimerRef.current = null;
+          const active = getFullscreenElement() !== null;
+          setIsFullscreen(active);
+          if (!active && !silent) {
+            showNotice(UNSUPPORTED_MESSAGE);
+          }
+        }, 180);
+      } catch {
+        clearVerifyTimer();
+        setIsFullscreen(getFullscreenElement() !== null);
+        if (!silent) {
           showNotice(UNSUPPORTED_MESSAGE);
         }
-      }, 180);
-    } catch {
-      clearVerifyTimer();
-      setIsFullscreen(getFullscreenElement() !== null);
-      showNotice(UNSUPPORTED_MESSAGE);
-    }
-  }, [clearVerifyTimer, showNotice]);
+      }
+    },
+    [clearVerifyTimer, showNotice],
+  );
 
   const exitFullscreen = useCallback(async () => {
     const doc = document as FullscreenDocument;
@@ -181,12 +202,50 @@ export function useFullscreen() {
   }, []);
 
   const toggleFullscreen = useCallback(async () => {
+    firstInteractionAttempted = true;
     if (getFullscreenElement() !== null) {
       await exitFullscreen();
     } else {
-      await enterFullscreen();
+      await enterFullscreen({ silent: false });
     }
   }, [enterFullscreen, exitFullscreen]);
+
+  useEffect(() => {
+    if (!autoOnFirstInteraction || firstInteractionAttempted) return;
+    if (typeof document === 'undefined') return;
+    if (getFullscreenElement() !== null) {
+      firstInteractionAttempted = true;
+      return;
+    }
+
+    const cleanup = () => {
+      document.removeEventListener('click', onFirstInteraction, true);
+      document.removeEventListener('keydown', onFirstInteraction, true);
+    };
+
+    const onFirstInteraction = (event: Event) => {
+      cleanup();
+      if (firstInteractionAttempted) return;
+      firstInteractionAttempted = true;
+
+      const target = event.target;
+      if (
+        target instanceof Element &&
+        target.closest('[data-fullscreen-toggle="true"]')
+      ) {
+        return;
+      }
+
+      if (getFullscreenElement() === null) {
+        void enterFullscreen({ silent: true });
+      }
+    };
+
+    document.addEventListener('click', onFirstInteraction, { capture: true });
+    document.addEventListener('keydown', onFirstInteraction, { capture: true });
+
+    return cleanup;
+  }, [autoOnFirstInteraction, enterFullscreen]);
 
   return {
     isFullscreen,
