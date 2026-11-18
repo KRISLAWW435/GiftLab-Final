@@ -315,7 +315,8 @@ export function LivePreviewStage({
             ref={iframeRef}
             src={iframeSrc}
             title={`Предпросмотр: ${preset.label} ${preset.width}×${preset.height}`}
-            allow="autoplay"
+            allow="autoplay; fullscreen"
+            allowFullScreen
             onLoad={() => {
               setIframeLoaded(true);
               sendSyncToIframe();

@@ -1,10 +1,14 @@
 import { useState } from 'react';
 import {
   ArrowLeft,
+  Maximize,
+  Minimize,
   Monitor,
   RotateCcw,
   Smartphone,
+  X,
 } from 'lucide-react';
+import { useFullscreen } from '../hooks/useFullscreen';
 import type { ConstellationProject } from '../types/project';
 import {
   LivePreviewStage,
@@ -33,6 +37,7 @@ export function PreviewWorkspace({
     typeof window !== 'undefined' && window.innerWidth < 768 ? 'phone' : 'desktop',
   );
   const [sessionKey, setSessionKey] = useState(0);
+  const { isFullscreen, notice, dismissNotice, toggleFullscreen } = useFullscreen();
 
   const handleRestartScenario = () => {
     setSessionKey((k) => k + 1);
@@ -59,7 +64,7 @@ export function PreviewWorkspace({
             type="button"
             data-testid="preview-return-btn"
             onClick={onExitPreview}
-            className="inline-flex items-center gap-1.5 min-h-[34px] px-3 py-1.5 rounded-full backdrop-blur-md bg-[#0b0816]/45 hover:bg-[#0b0816]/68 border border-white/15 hover:border-white/30 text-xs font-medium text-white/95 shadow-[0_8px_24px_rgba(0,0,0,0.4)] transition-all cursor-pointer max-w-[42vw] sm:max-w-none"
+            className="inline-flex items-center gap-1.5 min-h-[34px] px-3 py-1.5 rounded-full backdrop-blur-md bg-[#0b0816]/45 hover:bg-[#0b0816]/68 border border-white/15 hover:border-white/30 text-xs font-medium text-white/95 shadow-[0_8px_24px_rgba(0,0,0,0.4)] transition-all cursor-pointer max-w-[36vw] sm:max-w-none"
           >
             <ArrowLeft className="w-3.5 h-3.5 shrink-0" />
             <span className="truncate">{returnLabel}</span>
@@ -85,7 +90,7 @@ export function PreviewWorkspace({
             }`}
           >
             <Smartphone className="w-3.5 h-3.5 shrink-0" />
-            <span className="hidden xs:inline sm:inline">Телефон</span>
+            <span className="hidden sm:inline">Телефон</span>
           </button>
 
           <button
@@ -101,24 +106,62 @@ export function PreviewWorkspace({
             }`}
           >
             <Monitor className="w-3.5 h-3.5 shrink-0" />
-            <span className="hidden xs:inline sm:inline">Компьютер</span>
+            <span className="hidden sm:inline">Компьютер</span>
           </button>
         </div>
 
-        {/* Top-Right: Restart */}
-        <div className="pointer-events-auto flex items-center shrink-0">
+        {/* Top-Right: Restart + Fullscreen */}
+        <div className="pointer-events-auto flex items-center gap-1.5 shrink-0">
           <button
             type="button"
             data-testid="preview-restart-btn"
             onClick={handleRestartScenario}
             title="Запустить сценарий подарка с начала"
-            className="inline-flex items-center gap-1.5 min-h-[34px] px-3 py-1.5 rounded-full backdrop-blur-md bg-[#0b0816]/45 hover:bg-[#0b0816]/68 border border-white/15 hover:border-white/30 text-xs font-medium text-white/95 shadow-[0_8px_24px_rgba(0,0,0,0.4)] transition-all cursor-pointer shrink-0"
+            className="inline-flex items-center gap-1.5 min-h-[34px] px-2.5 sm:px-3 py-1.5 rounded-full backdrop-blur-md bg-[#0b0816]/45 hover:bg-[#0b0816]/68 border border-white/15 hover:border-white/30 text-xs font-medium text-white/95 shadow-[0_8px_24px_rgba(0,0,0,0.4)] transition-all cursor-pointer shrink-0"
           >
             <RotateCcw className="w-3.5 h-3.5 shrink-0" />
-            <span>С начала</span>
+            <span className="hidden sm:inline">С начала</span>
+          </button>
+
+          <button
+            type="button"
+            data-testid="preview-fullscreen-btn"
+            onClick={() => void toggleFullscreen()}
+            aria-pressed={isFullscreen}
+            aria-label={isFullscreen ? 'Выйти из полного экрана' : 'На весь экран'}
+            title={isFullscreen ? 'Выйти из полного экрана' : 'На весь экран'}
+            className="inline-flex items-center gap-1.5 min-h-[34px] px-2.5 sm:px-3 py-1.5 rounded-full backdrop-blur-md bg-[#0b0816]/45 hover:bg-[#0b0816]/68 border border-white/15 hover:border-white/30 text-xs font-medium text-white/95 shadow-[0_8px_24px_rgba(0,0,0,0.4)] transition-all cursor-pointer shrink-0 whitespace-nowrap"
+          >
+            {isFullscreen ? (
+              <Minimize className="w-3.5 h-3.5 shrink-0" />
+            ) : (
+              <Maximize className="w-3.5 h-3.5 shrink-0" />
+            )}
+            <span className="hidden md:inline">
+              {isFullscreen ? 'Выйти из полного экрана' : 'На весь экран'}
+            </span>
           </button>
         </div>
       </div>
+
+      {notice && (
+        <div
+          role="status"
+          aria-live="polite"
+          data-testid="preview-fullscreen-notice"
+          className="fixed bottom-4 left-1/2 -translate-x-1/2 z-40 max-w-[92vw] sm:max-w-md gl-hud !border-amber-300/40 px-3.5 py-2 flex items-center gap-2.5 text-xs text-amber-100 shadow-xl"
+        >
+          <span>{notice}</span>
+          <button
+            type="button"
+            onClick={dismissNotice}
+            aria-label="Закрыть уведомление"
+            className="rounded-full p-1 text-white/70 hover:text-white hover:bg-white/10 cursor-pointer shrink-0"
+          >
+            <X className="w-3.5 h-3.5" />
+          </button>
+        </div>
+      )}
 
       {/* Fullscreen Pure Recipient Walkthrough Stage */}
       <main className="w-full h-full min-w-0 min-h-0 flex overflow-hidden">

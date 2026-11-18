@@ -6,12 +6,16 @@ import {
   FastForward,
   Mail,
   MailOpen,
+  Maximize,
+  Minimize,
   Pencil,
   Sparkles,
   Volume2,
   VolumeX,
+  X,
 } from 'lucide-react';
 import { AnimatePresence, motion } from 'motion/react';
+import { useFullscreen } from '../hooks/useFullscreen';
 import type {
   EditableCardTarget,
   EditableTextField,
@@ -193,6 +197,12 @@ export function RecipientView({
   const finaleHeaderRef = useRef<HTMLElement | null>(null);
   const storyInlineInputRef = useRef<HTMLInputElement | null>(null);
   const storyInlineTextareaRef = useRef<HTMLTextAreaElement | null>(null);
+  const {
+    isFullscreen,
+    notice: fullscreenNotice,
+    dismissNotice: dismissFullscreenNotice,
+    toggleFullscreen,
+  } = useFullscreen();
 
   const [phase, setPhase] = useState<RecipientPhase>('sealed');
   const [activeIndex, setActiveIndex] = useState(0);
@@ -1518,6 +1528,54 @@ export function RecipientView({
     }
   };
 
+  const renderRecipientFullscreenButton = (options?: {
+    labelMode?: 'always' | 'responsive';
+    pillStyle?: boolean;
+  }) => {
+    const label = isFullscreen ? 'Выйти из полного экрана' : 'На весь экран';
+    const labelMode = options?.labelMode ?? 'responsive';
+    const pillStyle = options?.pillStyle ?? false;
+    const icon = isFullscreen ? (
+      <Minimize className="w-3.5 h-3.5 shrink-0" />
+    ) : (
+      <Maximize className="w-3.5 h-3.5 shrink-0" />
+    );
+    const labelVisibilityClass =
+      labelMode === 'always' ? 'inline' : 'inline sm:hidden md:inline';
+
+    if (pillStyle) {
+      return (
+        <button
+          type="button"
+          data-testid="recipient-fullscreen-btn"
+          onClick={() => void toggleFullscreen()}
+          aria-pressed={isFullscreen}
+          aria-label={label}
+          title={label}
+          className="inline-flex items-center justify-center gap-1.5 h-9 sm:h-10 px-3 sm:px-3.5 rounded-full border backdrop-blur-md bg-[#0b0816]/60 border-white/25 text-white hover:bg-[#0b0816]/80 hover:border-white/45 transition-all shadow-lg cursor-pointer text-xs font-medium whitespace-nowrap shrink-0"
+        >
+          {icon}
+          <span className={labelVisibilityClass}>{label}</span>
+        </button>
+      );
+    }
+
+    return (
+      <button
+        type="button"
+        data-testid="recipient-fullscreen-btn"
+        onClick={() => void toggleFullscreen()}
+        aria-pressed={isFullscreen}
+        aria-label={label}
+        title={label}
+        className="gl-btn-secondary !bg-gl-panel/85 hover:!bg-gl-card text-gl-text !px-3 !py-2 text-xs whitespace-nowrap shrink-0"
+      >
+        {icon}
+        <span className={labelVisibilityClass}>{label}</span>
+      </button>
+    );
+  };
+
   return (
     <div
       data-testid="recipient-view-root"
@@ -1634,7 +1692,7 @@ export function RecipientView({
           }
           className={`${
             editMode ? 'pointer-events-auto' : 'pointer-events-none'
-          } fixed inset-0 z-20 flex flex-col justify-between p-5 sm:p-8 gl-safe-top gl-safe-bottom`}
+          } fixed inset-0 z-20 flex flex-col justify-between px-5 sm:px-8 pt-[max(1rem,env(safe-area-inset-top,0px))] pb-[max(1rem,env(safe-area-inset-bottom,0px))] sm:pt-[max(1.5rem,env(safe-area-inset-top,0px))] sm:pb-[max(1.5rem,env(safe-area-inset-bottom,0px))]`}
         >
           {/* Ambient radial indigo luminescence behind 3D/2D sealed envelope (Reference #2) */}
           <div
@@ -1718,19 +1776,34 @@ export function RecipientView({
             </div>
           )}
 
-          <header className="relative z-20 flex items-start justify-between gap-4">
-            <div className="pointer-events-auto">
-              {onExitPreview && (
-                <button
-                  type="button"
-                  onClick={onExitPreview}
-                  className="gl-btn-secondary !bg-gl-panel/85 hover:!bg-gl-card text-gl-text !px-3 !py-2 text-xs"
-                >
-                  <ArrowLeft className="w-3.5 h-3.5" />
-                  В редактор
-                </button>
+          {(onExitPreview || !editMode) && (
+            <div className="relative z-30 flex items-center justify-between gap-2 mb-2 sm:mb-3 shrink-0">
+              <div className="pointer-events-auto">
+                {onExitPreview && (
+                  <button
+                    type="button"
+                    onClick={onExitPreview}
+                    className="gl-btn-secondary !bg-gl-panel/85 hover:!bg-gl-card text-gl-text !px-3 !py-2 text-xs"
+                  >
+                    <ArrowLeft className="w-3.5 h-3.5" />
+                    В редактор
+                  </button>
+                )}
+              </div>
+
+              {!editMode && (
+                <div className="pointer-events-auto shrink-0">
+                  {renderRecipientFullscreenButton({
+                    labelMode: 'always',
+                    pillStyle: true,
+                  })}
+                </div>
               )}
             </div>
+          )}
+
+          <header className="relative z-20 flex items-start justify-between gap-4">
+            <div className="w-20 hidden sm:block" />
 
             <div
               data-testid="envelope-header-block"
@@ -1931,8 +2004,8 @@ export function RecipientView({
 
       {/* PHASE 2: Envelope Dissolve & First Star Birth */}
       {phase === 'birthing' && (
-        <div className="pointer-events-none fixed inset-0 z-20 flex flex-col justify-between p-4 sm:p-6 gl-safe-top gl-safe-bottom">
-          <div className="flex items-start justify-between gap-3">
+        <div className="pointer-events-none fixed inset-0 z-20 flex flex-col justify-between px-4 sm:px-6 pt-[max(1rem,env(safe-area-inset-top,0px))] pb-[max(1rem,env(safe-area-inset-bottom,0px))] sm:pt-[max(1.5rem,env(safe-area-inset-top,0px))] sm:pb-[max(1.5rem,env(safe-area-inset-bottom,0px))]">
+          <div className="flex flex-wrap items-start justify-between gap-2 sm:gap-3">
             <div className="pointer-events-auto">
               {onExitPreview && (
                 <button
@@ -1946,7 +2019,7 @@ export function RecipientView({
               )}
             </div>
 
-            <div className="pointer-events-auto flex items-center gap-2">
+            <div className="pointer-events-auto flex flex-wrap items-center justify-end gap-2">
               {project.musicTrackId !== 'none' && (
                 <button
                   type="button"
@@ -1967,6 +2040,9 @@ export function RecipientView({
                   </span>
                 </button>
               )}
+
+              {!editMode &&
+                renderRecipientFullscreenButton({ labelMode: 'responsive' })}
 
               <button
                 type="button"
@@ -1996,7 +2072,7 @@ export function RecipientView({
 
       {/* PHASE 3: Sequential Star Story (Swipe + Orientation Adaptive Layout) */}
       {phase === 'starStory' && activeStar && (
-        <div className="pointer-events-none fixed inset-0 z-20 flex flex-col overflow-x-hidden gl-safe-top gl-safe-bottom">
+        <div className="pointer-events-none fixed inset-0 z-20 flex flex-col overflow-x-hidden pt-[env(safe-area-inset-top,0px)] pb-[env(safe-area-inset-bottom,0px)]">
           {/* Atmospheric readability scrim adapted to portrait vs landscape */}
           <div
             className={`pointer-events-none absolute inset-0 ${
@@ -2009,11 +2085,11 @@ export function RecipientView({
 
           {/* Compact Top Bar: Exit, Star Progress Indicator, Utility Toggles */}
           <header
-            className={`relative z-30 flex items-center justify-between gap-2 shrink-0 ${
+            className={`relative z-30 flex flex-wrap sm:flex-nowrap items-center justify-between gap-2 shrink-0 ${
               isCompactLandscape ? 'px-4 pt-2.5 pb-1' : 'px-4 sm:px-7 pt-3.5 sm:pt-4 pb-1.5'
             }`}
           >
-            <div className="pointer-events-auto flex items-center gap-2.5 min-w-0">
+            <div className="order-1 pointer-events-auto flex items-center gap-2.5 min-w-0">
               {onExitPreview && (
                 <button
                   type="button"
@@ -2032,7 +2108,7 @@ export function RecipientView({
             </div>
 
             {/* Star-shaped progress indicator (5-7+ small stars) */}
-            <div className="pointer-events-auto flex items-center gap-2 sm:gap-2.5 shrink-0">
+            <div className="order-3 sm:order-2 w-full sm:w-auto pt-0.5 sm:pt-0 pointer-events-auto flex items-center justify-center gap-2 sm:gap-2.5 shrink-0">
               <div
                 className="flex items-center gap-1 sm:gap-1.5"
                 role="navigation"
@@ -2085,7 +2161,7 @@ export function RecipientView({
             </div>
 
             {/* Compact Utility Controls */}
-            <div className="pointer-events-auto flex items-center gap-1.5 sm:gap-2 shrink-0">
+            <div className="order-2 sm:order-3 pointer-events-auto flex items-center gap-1.5 sm:gap-2 shrink-0">
               {finaleReached && (
                 <button
                   type="button"
@@ -2112,6 +2188,9 @@ export function RecipientView({
                   )}
                 </button>
               )}
+
+              {!editMode &&
+                renderRecipientFullscreenButton({ labelMode: 'responsive' })}
 
               {!editMode && (
                 <button
@@ -2855,8 +2934,8 @@ export function RecipientView({
 
       {/* PHASE 4: Final Constellation Birth Choreography */}
       {phase === 'finalReveal' && (
-        <div className="pointer-events-none fixed inset-0 z-20 flex flex-col justify-between p-4 sm:p-6 gl-safe-top gl-safe-bottom">
-          <div className="flex items-start justify-between gap-3">
+        <div className="pointer-events-none fixed inset-0 z-20 flex flex-col justify-between px-4 sm:px-6 pt-[max(1rem,env(safe-area-inset-top,0px))] pb-[max(1rem,env(safe-area-inset-bottom,0px))] sm:pt-[max(1.5rem,env(safe-area-inset-top,0px))] sm:pb-[max(1.5rem,env(safe-area-inset-bottom,0px))]">
+          <div className="flex flex-wrap items-start justify-between gap-2 sm:gap-3">
             <div className="pointer-events-auto">
               {onExitPreview && (
                 <button
@@ -2870,7 +2949,7 @@ export function RecipientView({
               )}
             </div>
 
-            <div className="pointer-events-auto flex items-center gap-2">
+            <div className="pointer-events-auto flex flex-wrap items-center justify-end gap-2">
               {project.musicTrackId !== 'none' && (
                 <button
                   type="button"
@@ -2884,6 +2963,9 @@ export function RecipientView({
                   )}
                 </button>
               )}
+
+              {!editMode &&
+                renderRecipientFullscreenButton({ labelMode: 'responsive' })}
 
               <button
                 type="button"
@@ -2902,7 +2984,7 @@ export function RecipientView({
       {phase === 'constellation' && (
         <>
           {onExitPreview && (
-            <div className="pointer-events-auto fixed top-4 left-4 sm:top-5 sm:left-6 z-30 gl-safe-top">
+            <div className="pointer-events-auto fixed top-[max(0.75rem,env(safe-area-inset-top,0px))] left-4 sm:top-[max(1.25rem,env(safe-area-inset-top,0px))] sm:left-6 z-30">
               <button
                 type="button"
                 onClick={onExitPreview}
@@ -2917,7 +2999,11 @@ export function RecipientView({
           {!(editMode && selectedTarget === 'constellation') && (
             <div
               data-testid="constellation-finale-title"
-              className="pointer-events-none fixed inset-x-0 top-0 z-20 flex flex-col items-center text-center px-16 sm:px-24 pt-4 sm:pt-5 gl-safe-top"
+              className={`pointer-events-none fixed inset-x-0 top-0 z-20 flex flex-col items-center text-center ${
+                !editMode
+                  ? 'px-4 md:px-72 pt-[max(3.75rem,calc(env(safe-area-inset-top,0px)+3.25rem))] md:pt-[max(1.25rem,env(safe-area-inset-top,0px))]'
+                  : 'px-16 sm:px-24 pt-[max(1rem,env(safe-area-inset-top,0px))] sm:pt-[max(1.25rem,env(safe-area-inset-top,0px))]'
+              }`}
             >
               <span
                 className="text-[10px] sm:text-[11px] font-semibold uppercase tracking-[0.22em] opacity-80"
@@ -2944,7 +3030,12 @@ export function RecipientView({
           )}
 
           {!editMode && (
-            <div className="pointer-events-auto fixed top-4 right-4 sm:top-5 sm:right-6 z-30 gl-safe-top flex items-center gap-2">
+            <div className="pointer-events-auto fixed top-[max(0.75rem,env(safe-area-inset-top,0px))] right-4 sm:top-[max(1.25rem,env(safe-area-inset-top,0px))] sm:right-6 z-30 flex items-center gap-2">
+              {renderRecipientFullscreenButton({
+                labelMode: 'always',
+                pillStyle: true,
+              })}
+
               <button
                 type="button"
                 data-testid="recipient-letter-toggle-btn"
@@ -2956,7 +3047,7 @@ export function RecipientView({
                     : 'Открыть финальное письмо'
                 }
                 title={letterOpen ? 'Скрыть письмо' : 'Открыть финальное письмо'}
-                className={`inline-flex items-center justify-center w-9 h-9 sm:w-10 sm:h-10 rounded-full border backdrop-blur-md transition-all shadow-lg cursor-pointer ${
+                className={`inline-flex items-center justify-center w-9 h-9 sm:w-10 sm:h-10 rounded-full border backdrop-blur-md transition-all shadow-lg cursor-pointer shrink-0 ${
                   letterOpen
                     ? 'bg-amber-400/25 border-amber-300/60 text-amber-100 hover:bg-amber-400/35'
                     : 'bg-[#0b0816]/60 border-white/25 text-white hover:bg-[#0b0816]/80 hover:border-white/45'
@@ -3081,6 +3172,25 @@ export function RecipientView({
             onEndElementDrag={endCanvasEdit}
           />
         </>
+      )}
+
+      {!editMode && fullscreenNotice && (
+        <div
+          role="status"
+          aria-live="polite"
+          data-testid="recipient-fullscreen-notice"
+          className="pointer-events-auto fixed top-[max(3.5rem,calc(env(safe-area-inset-top,0px)+3rem))] right-4 sm:right-6 z-40 max-w-[calc(100vw-2rem)] sm:max-w-sm gl-hud !border-amber-300/40 px-3.5 py-2 flex items-center gap-2.5 text-xs text-amber-100 shadow-xl"
+        >
+          <span>{fullscreenNotice}</span>
+          <button
+            type="button"
+            onClick={dismissFullscreenNotice}
+            aria-label="Закрыть уведомление"
+            className="rounded-full p-1 text-white/70 hover:text-white hover:bg-white/10 cursor-pointer shrink-0"
+          >
+            <X className="w-3.5 h-3.5" />
+          </button>
+        </div>
       )}
     </div>
   );

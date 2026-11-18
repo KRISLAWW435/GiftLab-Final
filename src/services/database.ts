@@ -13,7 +13,17 @@ const STORE_AUDIO = 'audio';
 
 function openDatabase(): Promise<IDBDatabase> {
   return new Promise((resolve, reject) => {
-    const request = indexedDB.open(DB_NAME, DB_VERSION);
+    if (typeof indexedDB === 'undefined') {
+      reject(new Error('IndexedDB недоступна в этом окружении'));
+      return;
+    }
+    let request: IDBOpenDBRequest;
+    try {
+      request = indexedDB.open(DB_NAME, DB_VERSION);
+    } catch (err) {
+      reject(err instanceof Error ? err : new Error('Не удалось открыть IndexedDB'));
+      return;
+    }
 
     request.onupgradeneeded = () => {
       const db = request.result;

@@ -366,6 +366,8 @@ function StudioApp() {
     try {
       const items = await listProjects();
       setProjects(items);
+    } catch {
+      setProjects([]);
     } finally {
       setLoading(false);
     }

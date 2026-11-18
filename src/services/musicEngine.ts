@@ -330,6 +330,13 @@ export interface ResolvedPreviewAudio {
   revokeOnDispose: boolean;
 }
 
+function resolveBuiltinAssetUrl(assetPath: string): string {
+  const base = import.meta.env.BASE_URL || '/';
+  const cleanBase = base.endsWith('/') ? base : `${base}/`;
+  const cleanPath = assetPath.startsWith('/') ? assetPath.slice(1) : assetPath;
+  return `${cleanBase}${cleanPath}`;
+}
+
 export async function resolveProjectMusicForPreview(
   project: Pick<ConstellationProject, 'musicTrackId' | 'customMusicId' | 'customMusicName'>,
 ): Promise<ResolvedPreviewAudio | null> {
@@ -349,7 +356,7 @@ export async function resolveProjectMusicForPreview(
   const builtin = MUSIC_TRACKS.find((t) => t.id === project.musicTrackId);
   if (builtin?.assetPath) {
     return {
-      url: builtin.assetPath,
+      url: resolveBuiltinAssetUrl(builtin.assetPath),
       name: builtin.name,
       revokeOnDispose: false,
     };
@@ -394,7 +401,7 @@ export async function resolveProjectMusicForExport(
 
   const builtin = MUSIC_TRACKS.find((t) => t.id === project.musicTrackId);
   if (builtin?.assetPath && builtin.filename) {
-    const response = await fetch(builtin.assetPath);
+    const response = await fetch(resolveBuiltinAssetUrl(builtin.assetPath));
     if (!response.ok) {
       throw new Error(`Не удалось загрузить встроенный трек ${builtin.name}`);
     }

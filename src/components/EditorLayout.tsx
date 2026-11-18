@@ -10,7 +10,9 @@ import {
   HelpCircle,
   Link2,
   Mail,
+  Maximize,
   Maximize2,
+  Minimize,
   Minimize2,
   Monitor,
   Orbit,
@@ -22,6 +24,7 @@ import {
   Trash2,
   X,
 } from 'lucide-react';
+import { useFullscreen } from '../hooks/useFullscreen';
 import type {
   EditableCardTarget,
   EditableTextField,
@@ -98,6 +101,12 @@ export function EditorLayout({
 }: EditorLayoutProps) {
   const sceneRef = useRef<Constellation3DHandle | null>(null);
   const jumpNonceRef = useRef(1);
+  const {
+    isFullscreen,
+    notice: fullscreenNotice,
+    dismissNotice: dismissFullscreenNotice,
+    toggleFullscreen,
+  } = useFullscreen();
 
   const [selectedStarId, setSelectedStarId] = useState<string>(
     project.stars[0]?.id ?? '',
@@ -540,10 +549,10 @@ export function EditorLayout({
     >
       {/* Compact Top Studio Header + Inline Step Progress Bar (hidden in fullscreen Preview) */}
       {activeStep !== 'preview' && (
-        <header className="gl-workshop-header relative z-30 shrink-0 border-b gl-glass-header gl-safe-top">
+        <header className="gl-workshop-header relative z-30 shrink-0 border-b gl-glass-header pt-[env(safe-area-inset-top,0px)]">
           <div className="min-h-[44px] px-3 sm:px-4 py-1.5 flex flex-wrap lg:flex-nowrap items-center justify-between gap-x-2.5 gap-y-1.5">
             {/* Left: Back button + Project title + Saved indicator */}
-            <div className="order-1 flex items-center gap-2 min-w-0 shrink-0 max-w-[60%] lg:max-w-[260px] xl:max-w-[300px]">
+            <div className="order-1 flex items-center gap-2 min-w-0 flex-1 lg:flex-none lg:max-w-[260px] xl:max-w-[300px]">
               <button
                 type="button"
                 onClick={onBackToProjects}
@@ -628,8 +637,27 @@ export function EditorLayout({
               </div>
             </nav>
 
-            {/* Right: Preview + Download ZIP */}
+            {/* Right: Fullscreen + Preview + Download ZIP */}
             <div className="order-2 lg:order-3 flex items-center gap-1.5 shrink-0">
+              <button
+                type="button"
+                data-testid="editor-fullscreen-btn"
+                onClick={() => void toggleFullscreen()}
+                aria-pressed={isFullscreen}
+                aria-label={isFullscreen ? 'Выйти из полного экрана' : 'На весь экран'}
+                title={isFullscreen ? 'Выйти из полного экрана' : 'На весь экран'}
+                className="gl-btn-secondary !min-h-[32px] !px-2.5 !py-1 text-xs text-gl-text whitespace-nowrap shrink-0"
+              >
+                {isFullscreen ? (
+                  <Minimize className="w-3.5 h-3.5 shrink-0" />
+                ) : (
+                  <Maximize className="w-3.5 h-3.5 shrink-0" />
+                )}
+                <span className="hidden sm:inline">
+                  {isFullscreen ? 'Выйти из полного экрана' : 'На весь экран'}
+                </span>
+              </button>
+
               <button
                 type="button"
                 onClick={() => goToStep('preview')}
@@ -1346,6 +1374,25 @@ export function EditorLayout({
             setMobilePane('panel');
           }}
         />
+      )}
+
+      {fullscreenNotice && activeStep !== 'preview' && (
+        <div
+          role="status"
+          aria-live="polite"
+          data-testid="editor-fullscreen-notice"
+          className="fixed bottom-16 md:bottom-4 left-1/2 -translate-x-1/2 z-50 max-w-[92vw] sm:max-w-md gl-hud !border-amber-300/40 px-3.5 py-2 flex items-center gap-2.5 text-xs text-amber-100 shadow-xl"
+        >
+          <span>{fullscreenNotice}</span>
+          <button
+            type="button"
+            onClick={dismissFullscreenNotice}
+            aria-label="Закрыть уведомление"
+            className="rounded-full p-1 text-white/70 hover:text-white hover:bg-white/10 cursor-pointer shrink-0"
+          >
+            <X className="w-3.5 h-3.5" />
+          </button>
+        </div>
       )}
     </div>
   );
