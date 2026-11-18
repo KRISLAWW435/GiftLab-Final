@@ -1,6 +1,20 @@
-import { useState } from 'react';
-import { AlertCircle, CheckCircle2, Download, X } from 'lucide-react';
+import { useEffect, useState } from 'react';
+import {
+  AlertCircle,
+  AlertTriangle,
+  Archive,
+  CheckCircle2,
+  FileCode2,
+  Smartphone,
+  X,
+} from 'lucide-react';
 import { resolveMusicTrackName } from '../scene/paletteConfig';
+import {
+  estimateStandaloneHtmlSize,
+  exportProjectToHtml,
+  type StandaloneHtmlEstimate,
+} from '../services/htmlExporter';
+import { formatBytesRu } from '../services/encoding';
 import { exportProjectToZip } from '../services/zipExporter';
 import {
   canExportProject,
@@ -14,14 +28,26 @@ interface ExportModalProps {
   onSelectStar: (starId: string) => void;
 }
 
+type ExportFormat = 'html' | 'zip';
+
+interface ExportDoneState {
+  format: ExportFormat;
+  filename: string;
+  sizeText: string;
+}
+
 export function ExportModal({
   project,
   onClose,
   onSelectStar,
 }: ExportModalProps) {
-  const [exporting, setExporting] = useState(false);
+  const [exportingFormat, setExportingFormat] = useState<ExportFormat | null>(
+    null,
+  );
   const [error, setError] = useState<string | null>(null);
-  const [doneFile, setDoneFile] = useState<string | null>(null);
+  const [doneInfo, setDoneInfo] = useState<ExportDoneState | null>(null);
+  const [htmlEstimate, setHtmlEstimate] =
+    useState<StandaloneHtmlEstimate | null>(null);
 
   const totalStars = project.stars.length;
   const hasEnoughStars = totalStars >= 5;
@@ -32,50 +58,100 @@ export function ExportModal({
   const hasTitle = project.title.trim().length > 0;
   const hasFinal = project.finalMessage.trim().length > 0;
   const ready = canExportProject(project);
+  const isBusy = exportingFormat !== null;
 
-  const handleDownload = async () => {
-    setExporting(true);
+  useEffect(() => {
+    let cancelled = false;
+    void estimateStandaloneHtmlSize(project)
+      .then((est) => {
+        if (!cancelled) setHtmlEstimate(est);
+      })
+      .catch(() => {
+        if (!cancelled) setHtmlEstimate(null);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [project]);
+
+  const triggerBlobDownload = (blob: Blob, filename: string) => {
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = filename;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    window.setTimeout(() => URL.revokeObjectURL(url), 4000);
+  };
+
+  const handleDownloadZip = async () => {
+    setExportingFormat('zip');
     setError(null);
+    setDoneInfo(null);
     try {
       const { blob, filename } = await exportProjectToZip(project);
-      const url = URL.createObjectURL(blob);
-      const link = document.createElement('a');
-      link.href = url;
-      link.download = filename;
-      document.body.appendChild(link);
-      link.click();
-      link.remove();
-      window.setTimeout(() => URL.revokeObjectURL(url), 4000);
-      setDoneFile(filename);
+      triggerBlobDownload(blob, filename);
+      setDoneInfo({
+        format: 'zip',
+        filename,
+        sizeText: formatBytesRu(blob.size),
+      });
     } catch (err) {
       setError(
         err instanceof Error ? err.message : 'Не удалось собрать ZIP-архив.',
       );
     } finally {
-      setExporting(false);
+      setExportingFormat(null);
+    }
+  };
+
+  const handleDownloadHtml = async () => {
+    setExportingFormat('html');
+    setError(null);
+    setDoneInfo(null);
+    try {
+      const { blob, filename, formattedSize } = await exportProjectToHtml(
+        project,
+      );
+      triggerBlobDownload(blob, filename);
+      setDoneInfo({
+        format: 'html',
+        filename,
+        sizeText: formattedSize,
+      });
+    } catch (err) {
+      setError(
+        err instanceof Error
+          ? err.message
+          : 'Не удалось собрать автономный HTML-файл.',
+      );
+    } finally {
+      setExportingFormat(null);
     }
   };
 
   return (
     <div
       onClick={(e) => {
-        if (e.target === e.currentTarget) onClose();
+        if (e.target === e.currentTarget && !isBusy) onClose();
       }}
-      className="fixed inset-0 z-40 flex items-center justify-center p-4 bg-[#06040a]/82"
+      className="fixed inset-0 z-40 flex items-center justify-center p-4 bg-[#06040a]/82 overflow-y-auto"
     >
-      <div className="w-full max-w-lg gl-card p-6 space-y-5 shadow-2xl">
+      <div className="w-full max-w-lg gl-card p-6 space-y-5 shadow-2xl my-auto">
         <div className="flex items-start justify-between gap-4">
           <div>
             <h2 className="font-display text-xl font-bold text-gl-text">
-              Экспорт подарка в ZIP
+              Скачать открытку
             </h2>
             <p className="text-xs text-gl-text-muted mt-1">
-              Подарок будет работать автономно в браузере без интернета
+              Выберите формат: один HTML-файл или ZIP-архив
             </p>
           </div>
           <button
             type="button"
             onClick={onClose}
+            disabled={isBusy}
             aria-label="Закрыть окно экспорта"
             className="gl-btn-icon !min-w-[36px] !min-h-[36px]"
           >
@@ -114,7 +190,7 @@ export function ExportModal({
           {unfilledStars.length > 0 && (
             <div className="pl-6 space-y-2 pt-0.5">
               <p className="text-xs text-amber-200/90">
-                Нельзя скачать архив, пока у всех звёзд не заполнены название и послание.
+                Нельзя скачать открытку, пока у всех звёзд не заполнены название и послание.
               </p>
               <div className="flex flex-wrap gap-1.5">
                 {unfilledStars.map(({ star, idx }) => (
@@ -146,46 +222,136 @@ export function ExportModal({
           </div>
         </div>
 
-        {/* Archive Contents Summary */}
-        <div className="rounded-xl border border-white/10 bg-white/[0.03] p-4 space-y-1.5 text-xs text-slate-300">
-          <div className="font-semibold text-white">Что попадёт в архив:</div>
-          <p>• index.html — автономная 3D-сцена созвездия (без внешних ссылок)</p>
-          <p>• assets/images/ — только выбранные иллюстрации звёзд</p>
+        {/* Embedded Contents Summary */}
+        <div className="rounded-xl border border-white/10 bg-white/[0.03] p-4 space-y-2 text-xs text-slate-300">
+          <div className="flex items-center justify-between gap-2">
+            <span className="font-semibold text-white">Что будет в открытке:</span>
+            {htmlEstimate && (
+              <span
+                data-testid="html-size-estimate"
+                className="text-[11px] font-medium text-indigo-200 tabular-nums"
+              >
+                HTML ≈ {htmlEstimate.formattedSize}
+              </span>
+            )}
+          </div>
+          <p>• 3D-сцена созвездия, конверт, тексты, настройки и шрифты</p>
+          <p>• Все выбранные иллюстрации и загруженные фото звёзд</p>
           {project.musicTrackId !== 'none' && (
-            <p>
-              • assets/music/ — {resolveMusicTrackName(project)}
-            </p>
+            <p>• Музыка: {resolveMusicTrackName(project)}</p>
           )}
-          <p>• ИНСТРУКЦИЯ.txt — подсказка для получателя</p>
+          <div className="pt-1 flex items-start gap-2 text-[11px] text-slate-400 border-t border-white/10">
+            <Smartphone className="w-3.5 h-3.5 text-indigo-300 shrink-0 mt-0.5" />
+            <span>
+              Для телефона Android лучше выбрать{' '}
+              <strong className="text-slate-200">HTML</strong> — всё встроено в один файл,
+              который открывается без интернета и распаковки.
+            </span>
+          </div>
         </div>
 
-        {error && <p className="text-xs text-rose-300">{error}</p>}
-
-        {doneFile && (
-          <div className="rounded-xl border border-emerald-400/35 bg-emerald-500/15 p-3 text-xs text-emerald-100">
-            Архив <span className="font-semibold">{doneFile}</span> скачан!
-            Распакуйте его перед отправкой или запуском, не отделяя index.html от
-            папки assets.
+        {htmlEstimate && htmlEstimate.missingResources.length > 0 && (
+          <div className="rounded-xl border border-rose-400/40 bg-rose-500/15 p-3 text-xs text-rose-100 space-y-1">
+            <div className="font-semibold flex items-center gap-1.5">
+              <AlertCircle className="w-4 h-4 shrink-0" />
+              Обнаружены недостающие ресурсы:
+            </div>
+            {htmlEstimate.missingResources.map((item) => (
+              <p key={item} className="pl-5">
+                • {item}
+              </p>
+            ))}
           </div>
         )}
 
-        <div className="flex items-center justify-end gap-2.5">
-          <button
-            type="button"
-            onClick={onClose}
-            className="gl-btn-secondary px-4"
+        {htmlEstimate?.warningMessage && (
+          <div className="rounded-xl border border-amber-400/35 bg-amber-500/12 p-3 text-xs text-amber-100 flex items-start gap-2">
+            <AlertTriangle className="w-4 h-4 text-amber-300 shrink-0 mt-0.5" />
+            <span>{htmlEstimate.warningMessage}</span>
+          </div>
+        )}
+
+        {error && (
+          <div
+            data-testid="export-error-banner"
+            className="rounded-xl border border-rose-400/40 bg-rose-500/15 p-3 text-xs text-rose-100 flex items-start gap-2"
           >
-            Закрыть
-          </button>
-          <button
-            type="button"
-            onClick={handleDownload}
-            disabled={!ready || exporting}
-            className="gl-btn-primary px-5"
+            <AlertCircle className="w-4 h-4 text-rose-300 shrink-0 mt-0.5" />
+            <span>{error}</span>
+          </div>
+        )}
+
+        {doneInfo && (
+          <div
+            data-testid="export-success-banner"
+            className="rounded-xl border border-emerald-400/35 bg-emerald-500/15 p-3 text-xs text-emerald-100 space-y-1"
           >
-            <Download className="w-4 h-4" />
-            {exporting ? 'Собираем архив...' : 'Скачать ZIP'}
-          </button>
+            <p>
+              Файл <span className="font-semibold">{doneInfo.filename}</span> ({doneInfo.sizeText}) скачан!
+            </p>
+            {doneInfo.format === 'html' ? (
+              <p className="text-emerald-200/90">
+                Отправьте этот файл получателю — он откроется прямо в браузере на Android или компьютере без интернета и дополнительных папок.
+              </p>
+            ) : (
+              <p className="text-emerald-200/90">
+                Распакуйте ZIP-архив перед запуском, не отделяя index.html от папки assets.
+              </p>
+            )}
+          </div>
+        )}
+
+        <div className="space-y-2.5 pt-1">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+            <button
+              type="button"
+              data-testid="export-html-btn"
+              onClick={() => void handleDownloadHtml()}
+              disabled={!ready || isBusy}
+              className="gl-btn-primary w-full justify-center px-4 !py-3 text-left"
+            >
+              <FileCode2 className="w-4 h-4 shrink-0" />
+              <span className="flex flex-col leading-tight">
+                <span>
+                  {exportingFormat === 'html' ? 'Собираем HTML...' : 'Скачать как HTML'}
+                </span>
+                <span className="text-[10px] font-normal opacity-85">
+                  {htmlEstimate
+                    ? `Один файл (≈ ${htmlEstimate.formattedSize})`
+                    : 'Один файл для Android'}
+                </span>
+              </span>
+            </button>
+
+            <button
+              type="button"
+              data-testid="export-zip-btn"
+              onClick={() => void handleDownloadZip()}
+              disabled={!ready || isBusy}
+              className="gl-btn-secondary w-full justify-center px-4 !py-3 text-left"
+            >
+              <Archive className="w-4 h-4 shrink-0" />
+              <span className="flex flex-col leading-tight">
+                <span>
+                  {exportingFormat === 'zip' ? 'Собираем архив...' : 'Скачать как архив'}
+                </span>
+                <span className="text-[10px] font-normal text-gl-text-muted">
+                  ZIP-архив (index.html + assets)
+                </span>
+              </span>
+            </button>
+          </div>
+
+          <div className="flex justify-end">
+            <button
+              type="button"
+              onClick={onClose}
+              disabled={isBusy}
+              className="gl-btn-secondary px-4 !min-h-[36px] text-xs"
+            >
+              Закрыть
+            </button>
+          </div>
         </div>
       </div>
     </div>

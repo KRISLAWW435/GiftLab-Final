@@ -626,7 +626,10 @@ export function resolveStarGlowHex(
   star: ConstellationStar,
   globalGlow: GlowColorId,
 ): GlowColorId {
-  return star.glowColor === 'inherit' ? globalGlow : star.glowColor;
+  if (!star.glowColor || star.glowColor === 'inherit' || !(star.glowColor in GLOW_COLORS)) {
+    return globalGlow;
+  }
+  return star.glowColor;
 }
 
 export const DEFAULT_STAR_IMAGE_SETTINGS: StarImageSettings = {

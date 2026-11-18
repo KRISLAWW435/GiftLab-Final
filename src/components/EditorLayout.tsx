@@ -668,13 +668,13 @@ export function EditorLayout({
 
               <button
                 type="button"
+                data-testid="editor-download-btn"
                 onClick={() => setShowExport(true)}
-                title="Скачать подарок в ZIP"
+                title="Скачать готовую открытку"
                 className="gl-btn-primary !min-h-[32px] !px-3 !py-1 text-xs"
               >
                 <Download className="w-3.5 h-3.5 shrink-0" />
-                <span className="hidden sm:inline">Скачать ZIP</span>
-                <span className="sm:hidden">ZIP</span>
+                <span>Скачать</span>
               </button>
             </div>
           </div>
@@ -1298,11 +1298,12 @@ export function EditorLayout({
                   ) : (
                     <button
                       type="button"
+                      data-testid="editor-step-download-btn"
                       onClick={() => setShowExport(true)}
                       className="gl-btn-primary !min-h-[38px] !px-3.5 text-xs"
                     >
                       <Download className="w-3.5 h-3.5 shrink-0" />
-                      <span>Скачать ZIP</span>
+                      <span>Скачать</span>
                     </button>
                   )}
                 </div>

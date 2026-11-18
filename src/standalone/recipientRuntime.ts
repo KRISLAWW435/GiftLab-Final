@@ -195,6 +195,40 @@ function createEnvelopeSvg(open: boolean): SVGSVGElement {
   return svg;
 }
 
+function createFullscreenSvg(active: boolean): SVGSVGElement {
+  const ns = 'http://www.w3.org/2000/svg';
+  const svg = document.createElementNS(ns, 'svg');
+  svg.setAttribute('viewBox', '0 0 24 24');
+  svg.setAttribute('width', '15');
+  svg.setAttribute('height', '15');
+  svg.setAttribute('fill', 'none');
+  svg.setAttribute('stroke', 'currentColor');
+  svg.setAttribute('stroke-width', '2');
+  svg.setAttribute('stroke-linecap', 'round');
+  svg.setAttribute('stroke-linejoin', 'round');
+  svg.setAttribute('aria-hidden', 'true');
+
+  const paths = active
+    ? [
+        'M8 3v3a2 2 0 0 1-2 2H3',
+        'M21 8h-3a2 2 0 0 1-2-2V3',
+        'M3 16h3a2 2 0 0 1 2 2v3',
+        'M16 21v-3a2 2 0 0 1 2-2h3',
+      ]
+    : [
+        'M8 3H5a2 2 0 0 0-2 2v3',
+        'M21 8V5a2 2 0 0 0-2-2h-3',
+        'M3 16v3a2 2 0 0 0 2 2h3',
+        'M16 21h3a2 2 0 0 0 2-2v-3',
+      ];
+  for (const d of paths) {
+    const path = document.createElementNS(ns, 'path');
+    path.setAttribute('d', d);
+    svg.appendChild(path);
+  }
+  return svg;
+}
+
 let decorUidSeq = 0;
 
 function createCardDecorSvg(
@@ -874,7 +908,13 @@ function bootGiftLabRecipient(): void {
   );
   openBtn.type = 'button';
   sealedFooter.append(sealedSub, openBtn);
-  sealedUi.append(sealedAmbient, sealedHeader, sealedFooter);
+  const sealedFsWrap = el('div', 'gl-sealed-fs-wrap');
+  const sealedFsBtn = el('button', 'gl-icon-btn');
+  sealedFsBtn.type = 'button';
+  sealedFsBtn.setAttribute('data-fullscreen-toggle', 'true');
+  sealedFsWrap.appendChild(sealedFsBtn);
+
+  sealedUi.append(sealedAmbient, sealedFsWrap, sealedHeader, sealedFooter);
   stage.appendChild(sealedUi);
 
   function applySealedComposition(): void {
@@ -908,9 +948,12 @@ function bootGiftLabRecipient(): void {
   const transTopRight = el('div', 'gl-birth-actions');
   const transSoundBtn = el('button', 'gl-btn gl-btn-ghost gl-hidden', 'Звук вкл');
   transSoundBtn.type = 'button';
+  const transFsBtn = el('button', 'gl-icon-btn');
+  transFsBtn.type = 'button';
+  transFsBtn.setAttribute('data-fullscreen-toggle', 'true');
   const skipBtn = el('button', 'gl-btn gl-btn-ghost', 'Пропустить');
   skipBtn.type = 'button';
-  transTopRight.append(transSoundBtn, skipBtn);
+  transTopRight.append(transSoundBtn, transFsBtn, skipBtn);
 
   const audioBlockedBanner = el('div', 'gl-audio-banner gl-hidden');
   const audioBlockedText = el('span', '', 'Нажмите, чтобы включить музыку');
@@ -938,12 +981,15 @@ function bootGiftLabRecipient(): void {
   backToConstBtn.type = 'button';
   const storySoundBtn = el('button', 'gl-btn gl-btn-ghost gl-hidden', 'Звук вкл');
   storySoundBtn.type = 'button';
+  const storyFsBtn = el('button', 'gl-icon-btn');
+  storyFsBtn.type = 'button';
+  storyFsBtn.setAttribute('data-fullscreen-toggle', 'true');
   const storyLetterBtn = el('button', 'gl-icon-btn');
   storyLetterBtn.type = 'button';
   storyLetterBtn.setAttribute('aria-label', 'Открыть финальное письмо');
   storyLetterBtn.title = 'Открыть финальное письмо';
   storyLetterBtn.appendChild(createEnvelopeSvg(false));
-  storyUtils.append(backToConstBtn, storySoundBtn, storyLetterBtn);
+  storyUtils.append(backToConstBtn, storySoundBtn, storyFsBtn, storyLetterBtn);
 
   storyTop.append(storyBrand, storyProgressWrap, storyUtils);
 
@@ -1122,13 +1168,25 @@ function bootGiftLabRecipient(): void {
   constellationRule.style.background = `linear-gradient(90deg, transparent, ${globalGlow.hex}, transparent)`;
   constellationTitleWrap.append(constellationEyebrow, constellationTitleEl, constellationRule);
 
-  const constellationLetterBtn = el('button', 'gl-icon-btn gl-letter-fab gl-hidden');
+  const constellationActions = el('div', 'gl-constellation-actions gl-hidden');
+  const constellationFsBtn = el('button', 'gl-icon-btn');
+  constellationFsBtn.type = 'button';
+  constellationFsBtn.setAttribute('data-fullscreen-toggle', 'true');
+  const constellationLetterBtn = el('button', 'gl-icon-btn');
   constellationLetterBtn.type = 'button';
   constellationLetterBtn.setAttribute('aria-label', 'Открыть финальное письмо');
   constellationLetterBtn.title = 'Открыть финальное письмо';
   constellationLetterBtn.appendChild(createEnvelopeSvg(true));
+  constellationActions.append(constellationFsBtn, constellationLetterBtn);
 
-  stage.append(constellationTitleWrap, constellationLetterBtn, letterBackdrop);
+  const fsNoticeEl = el('div', 'gl-fs-notice gl-hidden');
+  const fsNoticeTxt = el('span', '', '');
+  const fsNoticeClose = el('button', 'gl-fs-notice-close', '×');
+  fsNoticeClose.type = 'button';
+  fsNoticeClose.setAttribute('aria-label', 'Закрыть уведомление');
+  fsNoticeEl.append(fsNoticeTxt, fsNoticeClose);
+
+  stage.append(constellationTitleWrap, constellationActions, fsNoticeEl, letterBackdrop);
 
   function getActiveDevice(): DeviceLayoutKey {
     return resolveViewportDeviceMode(window.innerWidth, window.innerHeight);
@@ -1400,6 +1458,148 @@ function bootGiftLabRecipient(): void {
   };
   letterCard.addEventListener('pointercancel', resetLetterSwipe);
 
+  // Fullscreen controller (matches RecipientView behavior + safe Android file:// fallback)
+  type FsDoc = Document & {
+    webkitFullscreenEnabled?: boolean;
+    webkitFullscreenElement?: Element | null;
+    webkitExitFullscreen?: () => Promise<void> | void;
+  };
+  type FsEl = HTMLElement & {
+    webkitRequestFullscreen?: () => Promise<void> | void;
+  };
+  const fsButtons = [sealedFsBtn, transFsBtn, storyFsBtn, constellationFsBtn];
+  let fsNoticeTimer: number | null = null;
+  let fsFirstInteractionDone = false;
+
+  const getFsEl = (): Element | null => {
+    const d = document as FsDoc;
+    return d.fullscreenElement ?? d.webkitFullscreenElement ?? null;
+  };
+
+  const isFsSupported = (): boolean => {
+    const d = document as FsDoc;
+    const r = d.documentElement as FsEl | null;
+    if (!r) return false;
+    const hasReq =
+      typeof r.requestFullscreen === 'function' ||
+      typeof r.webkitRequestFullscreen === 'function';
+    const hasExit =
+      typeof d.exitFullscreen === 'function' ||
+      typeof d.webkitExitFullscreen === 'function';
+    if (!hasReq || !hasExit) return false;
+    if (typeof d.fullscreenEnabled === 'boolean' && !d.fullscreenEnabled && d.webkitFullscreenEnabled !== true) {
+      return false;
+    }
+    if (typeof d.webkitFullscreenEnabled === 'boolean' && !d.webkitFullscreenEnabled) {
+      return false;
+    }
+    return true;
+  };
+
+  const hideFsNotice = (): void => {
+    if (fsNoticeTimer !== null) {
+      window.clearTimeout(fsNoticeTimer);
+      fsNoticeTimer = null;
+    }
+    fsNoticeEl.classList.add('gl-hidden');
+  };
+
+  const showFsNotice = (msg: string): void => {
+    hideFsNotice();
+    fsNoticeTxt.textContent = msg;
+    fsNoticeEl.classList.remove('gl-hidden');
+    fsNoticeTimer = window.setTimeout(hideFsNotice, 4000);
+  };
+
+  const syncFullscreenUI = (): void => {
+    const active = getFsEl() !== null;
+    const label = active ? 'Выйти из полного экрана' : 'На весь экран';
+    for (const btn of fsButtons) {
+      btn.innerHTML = '';
+      btn.appendChild(createFullscreenSvg(active));
+      btn.setAttribute('aria-pressed', String(active));
+      btn.setAttribute('aria-label', label);
+      btn.title = label;
+    }
+    if (active) hideFsNotice();
+  };
+
+  const enterFullscreen = async (silent: boolean): Promise<void> => {
+    if (!isFsSupported()) {
+      syncFullscreenUI();
+      if (!silent) {
+        showFsNotice('Полноэкранный режим не поддерживается этим браузером или ограничен настройками просмотра.');
+      }
+      return;
+    }
+    const r = document.documentElement as FsEl;
+    try {
+      if (typeof r.requestFullscreen === 'function') {
+        await r.requestFullscreen();
+      } else if (typeof r.webkitRequestFullscreen === 'function') {
+        await Promise.resolve(r.webkitRequestFullscreen());
+      }
+      window.setTimeout(() => {
+        syncFullscreenUI();
+        if (!getFsEl() && !silent) {
+          showFsNotice('Полноэкранный режим не поддерживается этим браузером или ограничен настройками просмотра.');
+        }
+      }, 180);
+    } catch {
+      syncFullscreenUI();
+      if (!silent) {
+        showFsNotice('Полноэкранный режим не поддерживается этим браузером или ограничен настройками просмотра.');
+      }
+    }
+  };
+
+  const toggleFullscreen = async (): Promise<void> => {
+    fsFirstInteractionDone = true;
+    const d = document as FsDoc;
+    if (getFsEl()) {
+      try {
+        if (typeof d.exitFullscreen === 'function') {
+          await d.exitFullscreen();
+        } else if (typeof d.webkitExitFullscreen === 'function') {
+          await Promise.resolve(d.webkitExitFullscreen());
+        }
+      } catch {
+        // ignore exit error
+      } finally {
+        syncFullscreenUI();
+      }
+      return;
+    }
+    await enterFullscreen(false);
+  };
+
+  syncFullscreenUI();
+  for (const btn of fsButtons) {
+    btn.addEventListener('click', () => {
+      void toggleFullscreen();
+    });
+  }
+  fsNoticeClose.addEventListener('click', hideFsNotice);
+  document.addEventListener('fullscreenchange', syncFullscreenUI);
+  document.addEventListener('webkitfullscreenchange', syncFullscreenUI);
+  document.addEventListener('fullscreenerror', syncFullscreenUI);
+
+  const onFirstFullscreenInteraction = (e: Event) => {
+    document.removeEventListener('click', onFirstFullscreenInteraction, true);
+    document.removeEventListener('keydown', onFirstFullscreenInteraction, true);
+    if (fsFirstInteractionDone) return;
+    fsFirstInteractionDone = true;
+    const target = e.target;
+    if (target instanceof Element && target.closest('[data-fullscreen-toggle="true"]')) {
+      return;
+    }
+    if (!getFsEl()) {
+      void enterFullscreen(true);
+    }
+  };
+  document.addEventListener('click', onFirstFullscreenInteraction, { capture: true });
+  document.addEventListener('keydown', onFirstFullscreenInteraction, { capture: true });
+
   // Audio player
   let audioEl: HTMLAudioElement | null = null;
   let musicPlaying = false;
@@ -1409,9 +1609,16 @@ function bootGiftLabRecipient(): void {
 
   if (payload.musicPath) {
     audioEl = document.createElement('audio');
+    audioEl.preload = 'auto';
+    (audioEl as HTMLAudioElement & { playsInline?: boolean }).playsInline = true;
     audioEl.src = payload.musicPath;
     audioEl.loop = true;
     audioEl.volume = volume;
+    audioEl.addEventListener('error', () => {
+      musicPlaying = false;
+      audioBlocked = true;
+      syncSoundLabels();
+    });
 
     transSoundBtn.classList.remove('gl-hidden');
     storySoundBtn.classList.remove('gl-hidden');
@@ -1846,7 +2053,7 @@ function bootGiftLabRecipient(): void {
     transUi.classList.toggle('gl-hidden', next !== 'birthing' && next !== 'finalReveal');
     storyUi.classList.toggle('gl-hidden', next !== 'starStory');
     constellationTitleWrap.classList.toggle('gl-hidden', next !== 'constellation');
-    constellationLetterBtn.classList.toggle('gl-hidden', next !== 'constellation');
+    constellationActions.classList.toggle('gl-hidden', next !== 'constellation');
     quickLetterOpen = false;
     if (next === 'constellation') {
       setLetterOpen(true);

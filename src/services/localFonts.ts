@@ -1,5 +1,6 @@
 import type JSZip from 'jszip';
 import type { MessageFontId } from '../types/project';
+import { arrayBufferToBase64 } from './encoding';
 
 import caveatCyr400 from '@fontsource/caveat/files/caveat-cyrillic-400-normal.woff2?url';
 import caveatCyr600 from '@fontsource/caveat/files/caveat-cyrillic-600-normal.woff2?url';
@@ -101,6 +102,51 @@ export async function bundleFontsForZip(
       } catch {
         // Resilient fallback to system stack if fetch is unavailable
       }
+    }
+  }
+
+  return cssRules.join('\n  ');
+}
+
+/**
+ * Embeds local WOFF2 fonts directly as Base64 data URIs inside @font-face CSS
+ * so a single standalone HTML file works completely offline over file:// on Android.
+ */
+export async function bundleFontsInlineCss(
+  fontIds: Iterable<MessageFontId>,
+): Promise<string> {
+  const uniqueIds = Array.from(new Set(fontIds));
+  if (uniqueIds.length === 0) return '';
+
+  const cssRules: string[] = [];
+
+  for (const fontId of uniqueIds) {
+    const specs = FONT_ASSET_SPECS[fontId];
+    if (!specs) continue;
+
+    for (const spec of specs) {
+      let buf: ArrayBuffer;
+      try {
+        const res = await fetch(spec.url);
+        if (!res.ok) {
+          throw new Error(`HTTP ${res.status}`);
+        }
+        buf = await res.arrayBuffer();
+      } catch (err) {
+        const reason = err instanceof Error ? err.message : 'ошибка загрузки';
+        throw new Error(
+          `Не удалось встроить шрифт «${spec.family}» (${spec.fileName}): ${reason}.`,
+        );
+      }
+      if (buf.byteLength === 0) {
+        throw new Error(
+          `Файл шрифта «${spec.family}» (${spec.fileName}) пуст или повреждён.`,
+        );
+      }
+      const b64 = arrayBufferToBase64(buf);
+      cssRules.push(
+        `@font-face { font-family: '${spec.family}'; font-style: normal; font-weight: ${spec.weight}; font-display: swap; src: url('data:font/woff2;base64,${b64}') format('woff2'); unicode-range: ${spec.unicodeRange}; }`,
+      );
     }
   }
 

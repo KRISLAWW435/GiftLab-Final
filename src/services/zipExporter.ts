@@ -12,7 +12,7 @@ import { bundleFontsForZip } from './localFonts';
 import { resolveProjectMusicForExport } from './musicEngine';
 import runtimeBundle from '../standalone/runtime.bundle.txt?raw';
 
-function escapeHtmlText(str: string): string {
+export function escapeHtmlText(str: string): string {
   return str
     .replace(/&/g, '&amp;')
     .replace(/</g, '&lt;')
@@ -21,7 +21,7 @@ function escapeHtmlText(str: string): string {
     .replace(/'/g, '&#39;');
 }
 
-function safeJsonForScriptTag(obj: unknown): string {
+export function safeJsonForScriptTag(obj: unknown): string {
   return JSON.stringify(obj)
     .replace(/</g, '\\u003c')
     .replace(/>/g, '\\u003e')
@@ -30,7 +30,7 @@ function safeJsonForScriptTag(obj: unknown): string {
     .replace(/\u2029/g, '\\u2029');
 }
 
-function sanitizeFileName(name: string): string {
+export function sanitizeFileName(name: string): string {
   const cleaned = name
     .trim()
     .replace(/[\\/:*?"<>|]+/g, '')
@@ -38,22 +38,23 @@ function sanitizeFileName(name: string): string {
   return cleaned || 'Моё_созвездие';
 }
 
-const STANDALONE_CSS = `
+export const STANDALONE_CSS = `
   * { box-sizing: border-box; margin: 0; padding: 0; }
   html, body, #app { width: 100%; height: 100%; overflow: hidden; font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; color: #f8fafc; background: #090d1f; }
   .gl-stage { position: relative; width: 100%; height: 100dvh; overflow: hidden; }
   .gl-canvas { position: absolute; inset: 0; width: 100%; height: 100%; }
 
   /* Sealed & Birthing & FinalReveal Chrome */
-  .gl-sealed-ui { position: fixed; inset: 0; z-index: 20; display: flex; flex-direction: column; justify-content: space-between; padding: 28px 20px; pointer-events: none; }
-  .gl-sealed-head { text-align: center; max-width: 680px; margin: 0 auto; position: relative; z-index: 2; }
+  .gl-sealed-ui { position: fixed; inset: 0; z-index: 20; display: flex; flex-direction: column; justify-content: space-between; padding: max(20px, env(safe-area-inset-top, 0px)) 20px max(24px, env(safe-area-inset-bottom, 0px)); pointer-events: none; }
+  .gl-sealed-fs-wrap { position: fixed; top: max(12px, env(safe-area-inset-top, 0px)); right: 14px; z-index: 35; pointer-events: auto; }
+  .gl-sealed-head { text-align: center; max-width: 680px; margin: 0 auto; padding: 0 44px; position: relative; z-index: 2; }
   .gl-sealed-foot { pointer-events: auto; display: flex; flex-direction: column; align-items: center; gap: 12px; padding-bottom: 16px; position: relative; z-index: 2; }
   .gl-sealed-sub { font-size: 13px; color: #cbd5e1; text-align: center; }
   .gl-open-btn { padding: 14px 30px !important; font-size: 16px !important; border-radius: 9999px !important; }
   .gl-open-btn-pearl { background: linear-gradient(180deg, rgba(255,255,255,0.98) 0%, rgba(232,226,252,0.94) 100%) !important; color: #181236 !important; border: 1px solid rgba(255,255,255,0.8) !important; box-shadow: 0 14px 36px rgba(109, 84, 181, 0.52), 0 0 28px rgba(255, 255, 255, 0.32) !important; }
   .gl-open-btn-pearl:hover { transform: scale(1.03); filter: brightness(1.02); }
 
-  .gl-birth-ui { position: fixed; inset: 0; z-index: 20; display: flex; flex-direction: column; justify-content: space-between; align-items: flex-end; padding: 18px; pointer-events: none; }
+  .gl-birth-ui { position: fixed; inset: 0; z-index: 20; display: flex; flex-direction: column; justify-content: space-between; align-items: flex-end; padding: max(16px, env(safe-area-inset-top, 0px)) 18px max(18px, env(safe-area-inset-bottom, 0px)); pointer-events: none; }
   .gl-birth-actions { pointer-events: auto; display: flex; align-items: center; gap: 8px; }
   .gl-audio-banner { pointer-events: auto; margin: 0 auto 14px; display: flex; align-items: center; gap: 12px; padding: 9px 14px; border-radius: 16px; background: rgba(255,255,255,0.06); backdrop-filter: blur(40px); -webkit-backdrop-filter: blur(40px); border: 1px solid rgba(252,211,77,0.42); box-shadow: inset 0 0 20px rgba(255,255,255,0.1), 0 20px 40px rgba(0,0,0,0.4); font-size: 12px; color: #fef3c7; }
 
@@ -171,8 +172,10 @@ const STANDALONE_CSS = `
   .gl-icon-btn:active { transform: scale(0.95); }
   .gl-icon-btn-active { background: rgba(245,158,11,0.25); border-color: rgba(252,211,77,0.6); color: #fef3c7; }
   .gl-icon-btn-active:hover { background: rgba(245,158,11,0.35); border-color: rgba(252,211,77,0.78); }
-  .gl-letter-fab { position: fixed; top: 16px; right: 16px; z-index: 30; }
-  @media (min-width: 640px) { .gl-constellation-title-wrap { padding: 20px 96px 0; } .gl-icon-btn { width: 40px; height: 40px; } .gl-letter-fab { top: 20px; right: 24px; } }
+  .gl-constellation-actions { position: fixed; top: max(14px, env(safe-area-inset-top, 0px)); right: 16px; z-index: 30; display: flex; align-items: center; gap: 8px; pointer-events: auto; }
+  .gl-fs-notice { pointer-events: auto; position: fixed; top: max(56px, calc(env(safe-area-inset-top, 0px) + 50px)); right: 16px; z-index: 45; max-width: min(calc(100vw - 32px), 340px); display: flex; align-items: center; gap: 10px; padding: 8px 12px; border-radius: 14px; background: rgba(16, 20, 44, 0.88); backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px); border: 1px solid rgba(252,211,77,0.42); color: #fef3c7; font-size: 12px; box-shadow: 0 14px 32px rgba(0,0,0,0.5); }
+  .gl-fs-notice-close { background: transparent; border: none; color: #fef3c7; font-size: 16px; line-height: 1; cursor: pointer; padding: 0 2px; }
+  @media (min-width: 640px) { .gl-constellation-title-wrap { padding: 20px 96px 0; } .gl-icon-btn { width: 40px; height: 40px; } .gl-constellation-actions { top: max(20px, env(safe-area-inset-top, 0px)); right: 24px; } .gl-sealed-fs-wrap { top: max(20px, env(safe-area-inset-top, 0px)); right: 24px; } }
   .gl-letter-divider { position: relative; z-index: 2; height: 1px; margin: 0 22px; opacity: 0.4; flex-shrink: 0; }
   .gl-letter-body { position: relative; z-index: 2; overflow-y: auto; overscroll-behavior: contain; padding: 18px 26px; max-height: 54dvh; }
   .gl-letter-inner { display: flex; flex-direction: column; gap: 12px; }
