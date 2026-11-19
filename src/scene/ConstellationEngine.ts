@@ -255,6 +255,7 @@ export class ConstellationEngine {
   private starIndexById = new Map<string, number>();
 
   private state: ConstellationSceneState;
+  private manualStepMode = false;
   private isSoftwareGl = false;
   private isDisposed = false;
   private isTabHidden = false;
@@ -300,7 +301,9 @@ export class ConstellationEngine {
     container: HTMLElement,
     initialState: ConstellationSceneState,
     callbacks: ConstellationEngineCallbacks,
-    startOptions: boolean | { playIntroOnStart?: boolean; startSealed?: boolean } = false,
+    startOptions:
+      | boolean
+      | { playIntroOnStart?: boolean; startSealed?: boolean; manualStep?: boolean } = false,
   ) {
     this.container = container;
     this.state = initialState;
@@ -313,13 +316,16 @@ export class ConstellationEngine {
 
     const opts =
       typeof startOptions === 'boolean'
-        ? { playIntroOnStart: startOptions, startSealed: false }
+        ? { playIntroOnStart: startOptions, startSealed: false, manualStep: false }
         : startOptions;
 
+    this.manualStepMode = Boolean(opts.manualStep);
     this.isSoftwareGl = detectSoftwareWebGL();
     this.initScene(Boolean(opts.playIntroOnStart), Boolean(opts.startSealed));
-    this.bindEvents();
-    this.startLoop();
+    if (!this.manualStepMode) {
+      this.bindEvents();
+      this.startLoop();
+    }
   }
 
   private initScene(playIntroOnStart: boolean, startSealed: boolean): void {
@@ -327,8 +333,9 @@ export class ConstellationEngine {
     const height = Math.max(1, this.container.clientHeight || window.innerHeight);
 
     this.renderer = new THREE.WebGLRenderer({
-      antialias: !this.isSoftwareGl,
+      antialias: this.manualStepMode ? true : !this.isSoftwareGl,
       powerPreference: 'high-performance',
+      ...(this.manualStepMode ? { preserveDrawingBuffer: true } : {}),
     });
     this.renderer.outputColorSpace = THREE.SRGBColorSpace;
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
@@ -336,7 +343,9 @@ export class ConstellationEngine {
 
     const maxDpr = this.state.lowPerformance || window.innerWidth < 768 ? 1.5 : 2;
     this.renderer.setPixelRatio(
-      this.isSoftwareGl ? 1 : Math.min(window.devicePixelRatio || 1, maxDpr),
+      this.manualStepMode || this.isSoftwareGl
+        ? 1
+        : Math.min(window.devicePixelRatio || 1, maxDpr),
     );
     this.renderer.setSize(width, height);
     this.renderer.domElement.style.display = 'block';
@@ -1497,6 +1506,19 @@ export class ConstellationEngine {
     } else {
       this.frameId = requestAnimationFrame(tick);
     }
+  }
+
+  public stepAndRenderForExport(dt: number): HTMLCanvasElement | null {
+    if (!this.renderer || this.isDisposed) return null;
+    const safeDt = Math.min(0.1, Math.max(0.0001, dt));
+    this.elapsed += safeDt;
+    this.stepScene(safeDt);
+    if (this.composer) {
+      this.composer.render();
+    } else {
+      this.renderer.render(this.scene, this.camera);
+    }
+    return this.renderer.domElement;
   }
 
   private stepScene(dt: number): void {

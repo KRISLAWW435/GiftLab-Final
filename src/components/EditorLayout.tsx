@@ -141,14 +141,6 @@ export function EditorLayout({
     key: number;
     section: StarEditorSection;
   } | null>(null);
-  const [starsCenterView, setStarsCenterView] = useState<'3d' | 'card'>('3d');
-  const [starCardSelectedTarget, setStarCardSelectedTarget] =
-    useState<EditableCardTarget | null>('text');
-  const [starCardJumpTo, setStarCardJumpTo] = useState<PreviewJumpTarget>({
-    nonce: 1,
-    phase: 'starStory',
-    starIndex: 0,
-  });
 
   const [cardTab, setCardTab] = useState<CardEditorTab>('theme');
   const [cardSelectedTarget, setCardSelectedTarget] =
@@ -200,21 +192,6 @@ export function EditorLayout({
   );
   const activeStar = project.stars[activeStarIndex] ?? project.stars[0];
 
-  const syncStarCardPreview = (targetStarIndex: number) => {
-    jumpNonceRef.current += 1;
-    setStarCardJumpTo({
-      nonce: jumpNonceRef.current,
-      phase: 'starStory',
-      starIndex: targetStarIndex,
-    });
-  };
-
-  useEffect(() => {
-    if (activeStep === 'stars' && starsCenterView === 'card') {
-      syncStarCardPreview(activeStarIndex);
-    }
-  }, [activeStep, starsCenterView, activeStarIndex]);
-
   useEffect(() => {
     if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') return;
     const mq = window.matchMedia('(min-width: 768px)');
@@ -253,11 +230,6 @@ export function EditorLayout({
     } else if (nextStep !== 'preview') {
       setLastEditStep(nextStep);
     }
-    if (nextStep === 'stars' && activeStep !== 'stars') {
-      if (starsCenterView === 'card') {
-        syncStarCardPreview(activeStarIndex);
-      }
-    }
     if (nextStep === 'card' && activeStep !== 'card') {
       jumpNonceRef.current += 1;
       setCardJumpTo({
@@ -293,23 +265,6 @@ export function EditorLayout({
     else if (target === 'illustration') setCardTab('illustration');
     else if (target === 'decor') setCardTab('theme');
     else if (target === 'card' && cardTab !== 'theme') setCardTab('card');
-  };
-
-  const handleStarCardSelectTarget = (target: EditableCardTarget | null) => {
-    setStarCardSelectedTarget(target);
-    if (target === 'illustration') {
-      jumpNonceRef.current += 1;
-      setRequestedStarSection({ key: jumpNonceRef.current, section: 'look' });
-    } else if (target === 'text') {
-      jumpNonceRef.current += 1;
-      setRequestedStarSection({ key: jumpNonceRef.current, section: 'message' });
-    } else if (target === 'decor') {
-      setLastEditStep('card');
-      setActiveStep('card');
-      handleCardSelectTargetView('starStory', activeStarIndex);
-      setCardSelectedTarget('decor');
-      setCardTab('theme');
-    }
   };
 
   const handleCardSelectTargetView = (
@@ -352,11 +307,7 @@ export function EditorLayout({
   };
 
   const handleSelectStarFromList = (starId: string) => {
-    const nextIdx = Math.max(0, project.stars.findIndex((s) => s.id === starId));
     setSelectedStarId(starId);
-    if (starsCenterView === 'card') {
-      syncStarCardPreview(nextIdx);
-    }
     if (activeStep !== 'stars') {
       goToStep('stars');
     }
@@ -472,10 +423,7 @@ export function EditorLayout({
     }));
     setSelectedStarId(newStar.id);
     if (activeStep !== 'stars') {
-      setStarsCenterView('3d');
       goToStep('stars');
-    } else if (starsCenterView === 'card') {
-      syncStarCardPreview(idx);
     }
   };
 
@@ -859,112 +807,21 @@ export function EditorLayout({
               >
                 {activeStep === 'stars' && (
                   <div className="shrink-0 border-b border-white/10 bg-black/25 backdrop-blur-md px-2.5 sm:px-3 py-1.5 flex items-center justify-between gap-2">
-                    <div
-                      role="group"
-                      aria-label="Режим предпросмотра этапа звёзд"
-                      className="inline-flex items-center gap-1 p-0.5 rounded-xl bg-gl-input border border-white/10"
-                    >
+                    <div className="inline-flex items-center gap-1 p-0.5 rounded-xl bg-gl-input border border-white/10">
                       <button
                         type="button"
                         data-testid="stars-center-3d"
-                        data-selected={starsCenterView === '3d'}
-                        onClick={() => setStarsCenterView('3d')}
+                        data-selected={true}
                         className="gl-tab !min-h-[30px] !px-2.5 text-xs inline-flex items-center gap-1.5"
                       >
                         <Orbit className="w-3.5 h-3.5 shrink-0" />
                         <span>3D-сцена</span>
                       </button>
-
-                      <button
-                        type="button"
-                        data-testid="stars-center-card"
-                        data-selected={starsCenterView === 'card'}
-                        onClick={() => {
-                          setStarsCenterView('card');
-                          syncStarCardPreview(activeStarIndex);
-                        }}
-                        className="gl-tab !min-h-[30px] !px-2.5 text-xs inline-flex items-center gap-1.5"
-                      >
-                        <Mail className="w-3.5 h-3.5 shrink-0" />
-                        <span>Карточка звезды</span>
-                      </button>
                     </div>
-
-                    {starsCenterView === 'card' && (
-                      <div className="flex items-center gap-1.5 shrink-0">
-                        <div
-                          role="group"
-                          aria-label="Экран карточки звезды"
-                          className="inline-flex items-center gap-1 p-0.5 rounded-xl bg-gl-input border border-white/10"
-                        >
-                          <button
-                            type="button"
-                            data-testid="stars-card-device-phone"
-                            data-selected={cardDevice === 'phone'}
-                            onClick={() => setCardDevice('phone')}
-                            className="gl-tab !min-h-[30px] !px-2 text-[11px] inline-flex items-center gap-1"
-                          >
-                            <Smartphone className="w-3 h-3 shrink-0" />
-                            <span>Телефон</span>
-                          </button>
-
-                          <button
-                            type="button"
-                            data-testid="stars-card-device-desktop"
-                            data-selected={cardDevice === 'desktop'}
-                            onClick={() => setCardDevice('desktop')}
-                            className="gl-tab !min-h-[30px] !px-2 text-[11px] inline-flex items-center gap-1"
-                          >
-                            <Monitor className="w-3 h-3 shrink-0" />
-                            <span>Компьютер</span>
-                          </button>
-                        </div>
-
-                        <button
-                          type="button"
-                          onClick={() => setZenMode((z) => !z)}
-                          aria-pressed={zenMode}
-                          title={zenMode ? 'Показать панели' : 'Скрыть панели'}
-                          aria-label={zenMode ? 'Показать панели' : 'Скрыть панели'}
-                          className="hidden md:inline-flex gl-btn-icon !min-w-[32px] !min-h-[32px] !w-[32px] !h-[32px] !p-0"
-                        >
-                          {zenMode ? (
-                            <Minimize2 className="w-3.5 h-3.5" />
-                          ) : (
-                            <Maximize2 className="w-3.5 h-3.5" />
-                          )}
-                        </button>
-                      </div>
-                    )}
                   </div>
                 )}
 
-                {activeStep === 'stars' && starsCenterView === 'card' ? (
-                  <>
-                    <div className="flex-1 min-h-0 flex overflow-hidden">
-                      <LivePreviewStage
-                        project={project}
-                        device={cardDevice}
-                        editMode={true}
-                        selectedTarget={starCardSelectedTarget}
-                        jumpTo={starCardJumpTo}
-                        frameTestId="star-card-editor-frame"
-                        onPhaseStateChange={(phase, idx) => {
-                          if (phase === 'starStory' && project.stars[idx]) {
-                            setSelectedStarId(project.stars[idx].id);
-                          }
-                        }}
-                        onSelectTarget={handleStarCardSelectTarget}
-                        onPatchStar={handleCardPatchStar}
-                        onPatchProject={handleCardPatchProject}
-                      />
-                    </div>
-                    <div className="hidden sm:flex items-center justify-center px-3 py-1 border-t border-white/8 bg-gl-input/55 text-[11px] text-gl-text-muted">
-                      Живая карточка выбранной звезды — изменения текста, картинки и узора видны сразу
-                    </div>
-                  </>
-                ) : (
-                  <div className="flex-1 min-h-0 relative w-full h-full overflow-hidden">
+                <div className="flex-1 min-h-0 relative w-full h-full overflow-hidden">
                     <Constellation3D
                       ref={sceneRef}
                       paletteId={project.paletteId}
@@ -1168,7 +1025,6 @@ export function EditorLayout({
               </button>
             </div>
                   </div>
-                )}
               </main>
             )}
 
@@ -1337,10 +1193,10 @@ export function EditorLayout({
             data-selected={mobilePane === 'scene'}
             className="gl-tab !min-h-[40px] flex items-center justify-center gap-1.5"
           >
-            {activeStep === 'card' || (activeStep === 'stars' && starsCenterView === 'card') ? (
+            {activeStep === 'card' ? (
               <>
                 <Mail className="w-3.5 h-3.5 shrink-0" />
-                <span>{activeStep === 'card' ? 'Открытка' : 'Карточка'}</span>
+                <span>Открытка</span>
               </>
             ) : (
               <>
@@ -1357,8 +1213,7 @@ export function EditorLayout({
           project={project}
           onClose={() => setShowExport(false)}
           onSelectStar={(starId) => {
-            const targetIdx = Math.max(0, project.stars.findIndex((s) => s.id === starId));
-            const target = project.stars[targetIdx];
+            const target = project.stars.find((s) => s.id === starId);
             const targetSection: StarEditorSection =
               target && target.title.trim().length === 0 ? 'basics' : 'message';
             setSelectedStarId(starId);
@@ -1367,9 +1222,6 @@ export function EditorLayout({
               key: jumpNonceRef.current,
               section: targetSection,
             });
-            setStarsCenterView('card');
-            setStarCardSelectedTarget('text');
-            syncStarCardPreview(targetIdx);
             goToStep('stars');
             setMobilePane('panel');
           }}

@@ -1,10 +1,11 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import {
   AlertCircle,
   AlertTriangle,
   Archive,
   CheckCircle2,
   FileCode2,
+  Film,
   Smartphone,
   X,
 } from 'lucide-react';
@@ -15,6 +16,11 @@ import {
   type StandaloneHtmlEstimate,
 } from '../services/htmlExporter';
 import { formatBytesRu } from '../services/encoding';
+import {
+  computeVideoTimeline,
+  exportProjectToMp4,
+  type VideoExportProgress,
+} from '../services/videoExporter';
 import { exportProjectToZip } from '../services/zipExporter';
 import {
   canExportProject,
@@ -28,12 +34,13 @@ interface ExportModalProps {
   onSelectStar: (starId: string) => void;
 }
 
-type ExportFormat = 'html' | 'zip';
+type ExportFormat = 'html' | 'zip' | 'mp4';
 
 interface ExportDoneState {
   format: ExportFormat;
   filename: string;
   sizeText: string;
+  durationSec?: number;
 }
 
 export function ExportModal({
@@ -44,10 +51,24 @@ export function ExportModal({
   const [exportingFormat, setExportingFormat] = useState<ExportFormat | null>(
     null,
   );
+  const [videoProgress, setVideoProgress] = useState<VideoExportProgress | null>(
+    null,
+  );
   const [error, setError] = useState<string | null>(null);
   const [doneInfo, setDoneInfo] = useState<ExportDoneState | null>(null);
   const [htmlEstimate, setHtmlEstimate] =
     useState<StandaloneHtmlEstimate | null>(null);
+  const mp4AbortRef = useRef<AbortController | null>(null);
+
+  const estimatedVideoDuration = Math.round(
+    computeVideoTimeline(project).totalDurationSec,
+  );
+
+  useEffect(() => {
+    return () => {
+      mp4AbortRef.current?.abort();
+    };
+  }, []);
 
   const totalStars = project.stars.length;
   const hasEnoughStars = totalStars >= 5;
@@ -131,6 +152,43 @@ export function ExportModal({
     }
   };
 
+  const handleDownloadMp4 = async () => {
+    const controller = new AbortController();
+    mp4AbortRef.current = controller;
+    setExportingFormat('mp4');
+    setVideoProgress({ percent: 2, stageLabel: 'Готовим видеооткрытку...' });
+    setError(null);
+    setDoneInfo(null);
+    try {
+      const { blob, filename, formattedSize, durationSec } =
+        await exportProjectToMp4(project, {
+          signal: controller.signal,
+          onProgress: (p) => setVideoProgress(p),
+        });
+      triggerBlobDownload(blob, filename);
+      setDoneInfo({
+        format: 'mp4',
+        filename,
+        sizeText: formattedSize,
+        durationSec: Math.round(durationSec),
+      });
+    } catch (err) {
+      if (err instanceof DOMException && err.name === 'AbortError') {
+        setError('Экспорт видео отменён.');
+      } else {
+        setError(
+          err instanceof Error
+            ? err.message
+            : 'Не удалось создать MP4-видео.',
+        );
+      }
+    } finally {
+      mp4AbortRef.current = null;
+      setExportingFormat(null);
+      setVideoProgress(null);
+    }
+  };
+
   return (
     <div
       onClick={(e) => {
@@ -145,7 +203,7 @@ export function ExportModal({
               Скачать открытку
             </h2>
             <p className="text-xs text-gl-text-muted mt-1">
-              Выберите формат: один HTML-файл или ZIP-архив
+              Выберите формат: HTML для Android, видео MP4 для iPhone или ZIP-архив
             </p>
           </div>
           <button
@@ -243,9 +301,10 @@ export function ExportModal({
           <div className="pt-1 flex items-start gap-2 text-[11px] text-slate-400 border-t border-white/10">
             <Smartphone className="w-3.5 h-3.5 text-indigo-300 shrink-0 mt-0.5" />
             <span>
-              Для телефона Android лучше выбрать{' '}
-              <strong className="text-slate-200">HTML</strong> — всё встроено в один файл,
-              который открывается без интернета и распаковки.
+              Для Android и компьютера выберите{' '}
+              <strong className="text-slate-200">HTML</strong>, а для{' '}
+              <strong className="text-slate-200">iPhone и мессенджеров</strong> —{' '}
+              <strong className="text-slate-200">видео MP4</strong>: оно сразу открывается в «Фото», Telegram и WhatsApp.
             </span>
           </div>
         </div>
@@ -281,17 +340,51 @@ export function ExportModal({
           </div>
         )}
 
+        {exportingFormat === 'mp4' && videoProgress && (
+          <div
+            data-testid="mp4-progress-banner"
+            className="rounded-xl border border-indigo-400/35 bg-indigo-500/15 p-3.5 text-xs text-indigo-100 space-y-2"
+          >
+            <div className="flex items-center justify-between gap-2">
+              <span className="font-medium truncate">{videoProgress.stageLabel}</span>
+              <span className="font-semibold tabular-nums shrink-0">
+                {videoProgress.percent}%
+              </span>
+            </div>
+            <div className="h-2 w-full rounded-full bg-white/10 overflow-hidden">
+              <div
+                className="h-full rounded-full bg-gradient-to-r from-pink-400 via-purple-400 to-sky-400 transition-all duration-150"
+                style={{ width: `${Math.max(4, Math.min(100, videoProgress.percent))}%` }}
+              />
+            </div>
+            <div className="flex justify-end">
+              <button
+                type="button"
+                onClick={() => mp4AbortRef.current?.abort()}
+                className="text-[11px] text-indigo-200 hover:text-white underline cursor-pointer"
+              >
+                Отменить рендер
+              </button>
+            </div>
+          </div>
+        )}
+
         {doneInfo && (
           <div
             data-testid="export-success-banner"
             className="rounded-xl border border-emerald-400/35 bg-emerald-500/15 p-3 text-xs text-emerald-100 space-y-1"
           >
             <p>
-              Файл <span className="font-semibold">{doneInfo.filename}</span> ({doneInfo.sizeText}) скачан!
+              Файл <span className="font-semibold">{doneInfo.filename}</span> ({doneInfo.sizeText}
+              {doneInfo.durationSec ? `, ~${doneInfo.durationSec} с` : ''}) скачан!
             </p>
             {doneInfo.format === 'html' ? (
               <p className="text-emerald-200/90">
                 Отправьте этот файл получателю — он откроется прямо в браузере на Android или компьютере без интернета и дополнительных папок.
+              </p>
+            ) : doneInfo.format === 'mp4' ? (
+              <p className="text-emerald-200/90">
+                Видео готово для iPhone — отправьте его в Telegram, WhatsApp или сохраните в «Фото» без интернета.
               </p>
             ) : (
               <p className="text-emerald-200/90">
@@ -317,7 +410,7 @@ export function ExportModal({
                 </span>
                 <span className="text-[10px] font-normal opacity-85">
                   {htmlEstimate
-                    ? `Один файл (≈ ${htmlEstimate.formattedSize})`
+                    ? `Для Android (${htmlEstimate.formattedSize})`
                     : 'Один файл для Android'}
                 </span>
               </span>
@@ -325,22 +418,42 @@ export function ExportModal({
 
             <button
               type="button"
-              data-testid="export-zip-btn"
-              onClick={() => void handleDownloadZip()}
+              data-testid="export-mp4-btn"
+              onClick={() => void handleDownloadMp4()}
               disabled={!ready || isBusy}
-              className="gl-btn-secondary w-full justify-center px-4 !py-3 text-left"
+              className="gl-btn-secondary w-full justify-center px-4 !py-3 text-left border-indigo-400/35"
             >
-              <Archive className="w-4 h-4 shrink-0" />
+              <Film className="w-4 h-4 shrink-0 text-pink-300" />
               <span className="flex flex-col leading-tight">
                 <span>
-                  {exportingFormat === 'zip' ? 'Собираем архив...' : 'Скачать как архив'}
+                  {exportingFormat === 'mp4'
+                    ? `Рендерим MP4 (${videoProgress?.percent ?? 0}%)...`
+                    : 'Скачать как видео (MP4)'}
                 </span>
                 <span className="text-[10px] font-normal text-gl-text-muted">
-                  ZIP-архив (index.html + assets)
+                  Для iPhone и мессенджеров (~{estimatedVideoDuration} с)
                 </span>
               </span>
             </button>
           </div>
+
+          <button
+            type="button"
+            data-testid="export-zip-btn"
+            onClick={() => void handleDownloadZip()}
+            disabled={!ready || isBusy}
+            className="gl-btn-secondary w-full justify-center px-4 !py-2.5 text-left"
+          >
+            <Archive className="w-4 h-4 shrink-0" />
+            <span className="flex flex-col leading-tight">
+              <span>
+                {exportingFormat === 'zip' ? 'Собираем архив...' : 'Скачать как архив'}
+              </span>
+              <span className="text-[10px] font-normal text-gl-text-muted">
+                ZIP-архив (index.html + assets)
+              </span>
+            </span>
+          </button>
 
           <div className="flex justify-end">
             <button
