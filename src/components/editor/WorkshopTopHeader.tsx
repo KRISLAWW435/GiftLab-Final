@@ -7,8 +7,10 @@ import {
   Mail,
   Maximize,
   Minimize,
+  Redo2,
   Sparkles,
   Star,
+  Undo2,
 } from 'lucide-react';
 import type { WorkshopStepId } from '../EditorLayout';
 
@@ -32,6 +34,10 @@ interface WorkshopTopHeaderProps {
   activeStep: WorkshopStepId;
   stepCompleted: Record<WorkshopStepId, boolean>;
   isFullscreen: boolean;
+  canUndo?: boolean;
+  canRedo?: boolean;
+  onUndo?: () => void;
+  onRedo?: () => void;
   onBackToProjects: () => void;
   onGoToStep: (step: WorkshopStepId) => void;
   onToggleFullscreen: () => void;
@@ -44,6 +50,10 @@ export function WorkshopTopHeader({
   activeStep,
   stepCompleted,
   isFullscreen,
+  canUndo = false,
+  canRedo = false,
+  onUndo,
+  onRedo,
   onBackToProjects,
   onGoToStep,
   onToggleFullscreen,
@@ -138,8 +148,34 @@ export function WorkshopTopHeader({
           </div>
         </nav>
 
-        {/* Right: Fullscreen + Preview + Download */}
+        {/* Right: Undo/Redo + Fullscreen + Preview + Download */}
         <div className="order-2 lg:order-3 flex items-center gap-1.5 shrink-0">
+          {(onUndo || onRedo) && (
+            <div className="flex items-center gap-1 pr-1 mr-0.5 border-r border-white/10">
+              <button
+                type="button"
+                data-testid="editor-undo-btn"
+                onClick={onUndo}
+                disabled={!canUndo}
+                aria-label="Отменить последнее действие (Ctrl+Z)"
+                title="Отменить (Ctrl+Z)"
+                className="gl-btn-icon !min-w-[32px] !min-h-[32px] !w-[32px] !h-[32px] !p-0 text-gl-text shrink-0 disabled:opacity-35 disabled:cursor-not-allowed"
+              >
+                <Undo2 className="w-3.5 h-3.5 shrink-0" />
+              </button>
+              <button
+                type="button"
+                data-testid="editor-redo-btn"
+                onClick={onRedo}
+                disabled={!canRedo}
+                aria-label="Повторить действие (Ctrl+Y)"
+                title="Повторить (Ctrl+Y)"
+                className="gl-btn-icon !min-w-[32px] !min-h-[32px] !w-[32px] !h-[32px] !p-0 text-gl-text shrink-0 disabled:opacity-35 disabled:cursor-not-allowed"
+              >
+                <Redo2 className="w-3.5 h-3.5 shrink-0" />
+              </button>
+            </div>
+          )}
           <button
             type="button"
             data-testid="editor-fullscreen-btn"

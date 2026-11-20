@@ -263,12 +263,18 @@ export async function duplicateProject(source: ConstellationProject): Promise<Co
   return saveProject(cloned);
 }
 
-export async function cleanupUnusedProjectImages(project: ConstellationProject): Promise<void> {
+export async function cleanupUnusedProjectImages(
+  project: ConstellationProject,
+  preservedImageIds?: ReadonlySet<string>,
+): Promise<void> {
   const usedIds = new Set(
     project.stars
       .filter((s) => s.illustration.type === 'custom')
       .map((s) => s.illustration.id),
   );
+  if (preservedImageIds) {
+    for (const id of preservedImageIds) usedIds.add(id);
+  }
   const existing = await listImagesForProject(project.id);
   const unused = existing.filter((img) => !usedIds.has(img.id));
   if (unused.length === 0) return;
@@ -285,10 +291,17 @@ export async function cleanupUnusedProjectImages(project: ConstellationProject):
   });
 }
 
-export async function cleanupUnusedProjectAudio(project: ConstellationProject): Promise<void> {
-  const usedId = project.customMusicId;
+export async function cleanupUnusedProjectAudio(
+  project: ConstellationProject,
+  preservedAudioIds?: ReadonlySet<string>,
+): Promise<void> {
+  const usedIds = new Set<string>();
+  if (project.customMusicId) usedIds.add(project.customMusicId);
+  if (preservedAudioIds) {
+    for (const id of preservedAudioIds) usedIds.add(id);
+  }
   const existing = await listAudioForProject(project.id);
-  const unused = existing.filter((aud) => aud.id !== usedId);
+  const unused = existing.filter((aud) => !usedIds.has(aud.id));
   if (unused.length === 0) return;
 
   const db = await openDatabase();

@@ -6,6 +6,7 @@ import {
   CheckCircle2,
   FileCode2,
   Film,
+  HardDriveDownload,
   Smartphone,
   X,
 } from 'lucide-react';
@@ -16,6 +17,7 @@ import {
   type StandaloneHtmlEstimate,
 } from '../services/htmlExporter';
 import { formatBytesRu } from '../services/encoding';
+import { exportProjectBackup } from '../services/projectBackup';
 import {
   computeVideoTimeline,
   exportProjectToMp4,
@@ -34,7 +36,7 @@ interface ExportModalProps {
   onSelectStar: (starId: string) => void;
 }
 
-type ExportFormat = 'html' | 'zip' | 'mp4';
+type ExportFormat = 'html' | 'zip' | 'mp4' | 'backup';
 
 interface ExportDoneState {
   format: ExportFormat;
@@ -186,6 +188,29 @@ export function ExportModal({
       mp4AbortRef.current = null;
       setExportingFormat(null);
       setVideoProgress(null);
+    }
+  };
+
+  const handleDownloadBackup = async () => {
+    setExportingFormat('backup');
+    setError(null);
+    setDoneInfo(null);
+    try {
+      const { blob, filename } = await exportProjectBackup(project);
+      triggerBlobDownload(blob, filename);
+      setDoneInfo({
+        format: 'backup',
+        filename,
+        sizeText: formatBytesRu(blob.size),
+      });
+    } catch (err) {
+      setError(
+        err instanceof Error
+          ? err.message
+          : 'Не удалось сохранить резервную копию проекта.',
+      );
+    } finally {
+      setExportingFormat(null);
     }
   };
 
@@ -386,6 +411,10 @@ export function ExportModal({
               <p className="text-emerald-200/90">
                 Видео готово для iPhone — отправьте его в Telegram, WhatsApp или сохраните в «Фото» без интернета.
               </p>
+            ) : doneInfo.format === 'backup' ? (
+              <p className="text-emerald-200/90">
+                Резервная копия сохранена. Вы сможете загрузить её на стартовом экране на любом устройстве, чтобы продолжить редактирование.
+              </p>
             ) : (
               <p className="text-emerald-200/90">
                 Распакуйте ZIP-архив перед запуском, не отделяя index.html от папки assets.
@@ -454,6 +483,28 @@ export function ExportModal({
               </span>
             </span>
           </button>
+
+          <div className="pt-2 mt-1 border-t border-white/10 space-y-2">
+            <button
+              type="button"
+              data-testid="export-backup-btn"
+              onClick={() => void handleDownloadBackup()}
+              disabled={isBusy}
+              className="gl-btn-secondary w-full justify-center px-4 !py-2.5 text-left border-violet-300/25"
+            >
+              <HardDriveDownload className="w-4 h-4 shrink-0 text-violet-300" />
+              <span className="flex flex-col leading-tight">
+                <span>
+                  {exportingFormat === 'backup'
+                    ? 'Сохраняем копию...'
+                    : 'Резервная копия проекта (.giftlab.json)'}
+                </span>
+                <span className="text-[10px] font-normal text-gl-text-muted">
+                  Для переноса в другой браузер и продолжения правки (доступно даже для черновиков)
+                </span>
+              </span>
+            </button>
+          </div>
 
           <div className="flex justify-end">
             <button

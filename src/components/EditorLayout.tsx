@@ -56,6 +56,10 @@ import { StarList } from './StarList';
 interface EditorLayoutProps {
   project: ConstellationProject;
   saveState: 'saved' | 'saving';
+  canUndo?: boolean;
+  canRedo?: boolean;
+  onUndo?: () => void;
+  onRedo?: () => void;
   onUpdateProject: (updater: (prev: ConstellationProject) => ConstellationProject) => void;
   onBackToProjects: () => void;
   onOpenPreview?: () => void;
@@ -72,6 +76,10 @@ type MobilePane = 'panel' | 'scene';
 export function EditorLayout({
   project,
   saveState,
+  canUndo = false,
+  canRedo = false,
+  onUndo,
+  onRedo,
   onUpdateProject,
   onBackToProjects,
 }: EditorLayoutProps) {
@@ -493,6 +501,47 @@ export function EditorLayout({
     }
   };
 
+  useEffect(() => {
+    if (project.stars.length === 0) return;
+    if (!project.stars.some((s) => s.id === selectedStarId)) {
+      setSelectedStarId(project.stars[0].id);
+    }
+  }, [project.stars, selectedStarId]);
+
+  useEffect(() => {
+    if (!onUndo && !onRedo) return;
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (showExport || activeStep === 'preview') return;
+      if (!(e.ctrlKey || e.metaKey) || e.altKey) return;
+
+      const target = e.target as HTMLElement | null;
+      if (
+        target &&
+        (target.tagName === 'INPUT' ||
+          target.tagName === 'TEXTAREA' ||
+          target.tagName === 'SELECT' ||
+          target.isContentEditable)
+      ) {
+        return;
+      }
+
+      const key = e.key.toLowerCase();
+      if (key === 'z' && !e.shiftKey) {
+        if (canUndo && onUndo) {
+          e.preventDefault();
+          onUndo();
+        }
+      } else if ((key === 'z' && e.shiftKey) || (key === 'y' && !e.shiftKey)) {
+        if (canRedo && onRedo) {
+          e.preventDefault();
+          onRedo();
+        }
+      }
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [activeStep, canRedo, canUndo, onRedo, onUndo, showExport]);
+
   return (
     <div
       data-palette={project.paletteId}
@@ -506,6 +555,10 @@ export function EditorLayout({
           activeStep={activeStep}
           stepCompleted={stepCompleted}
           isFullscreen={isFullscreen}
+          canUndo={canUndo}
+          canRedo={canRedo}
+          onUndo={onUndo}
+          onRedo={onRedo}
           onBackToProjects={onBackToProjects}
           onGoToStep={goToStep}
           onToggleFullscreen={() => void toggleFullscreen()}

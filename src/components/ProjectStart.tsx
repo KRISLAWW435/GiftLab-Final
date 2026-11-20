@@ -1,14 +1,22 @@
-import { useRef, useState } from 'react';
+import { useRef, useState, type ChangeEvent } from 'react';
 import {
+  AlertCircle,
+  CheckCircle2,
   Copy,
   Eye,
   FolderOpen,
+  HardDriveDownload,
   Play,
   Plus,
   Sparkles,
   Trash2,
+  Upload,
 } from 'lucide-react';
 import { CompositionPresetPreview } from '../assets/shapePreviews';
+import {
+  exportProjectBackup,
+  importProjectBackupFile,
+} from '../services/projectBackup';
 import { HeroVideoShowcase } from './HeroVideoShowcase';
 import {
   COMPOSITION_PRESETS,
@@ -28,6 +36,7 @@ interface ProjectStartProps {
   loading: boolean;
   onCreateProject: (project: ConstellationProject) => void;
   onOpenProject: (project: ConstellationProject) => void;
+  onImportProject: (project: ConstellationProject) => void;
   onPreviewProject: (project: ConstellationProject) => void;
   onDuplicateProject: (project: ConstellationProject) => void;
   onDeleteProject: (projectId: string) => void;
@@ -38,6 +47,7 @@ export function ProjectStart({
   loading,
   onCreateProject,
   onOpenProject,
+  onImportProject,
   onPreviewProject,
   onDuplicateProject,
   onDeleteProject,
@@ -48,10 +58,18 @@ export function ProjectStart({
   const [titleInput, setTitleInput] = useState('');
   const [recipientInput, setRecipientInput] = useState('');
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
+  const [importingBackup, setImportingBackup] = useState(false);
+  const [exportingBackupId, setExportingBackupId] = useState<string | null>(null);
+  const [backupError, setBackupError] = useState<string | null>(null);
+  const [importedBanner, setImportedBanner] = useState<{
+    project: ConstellationProject;
+    skippedMissingAssets: string[];
+  } | null>(null);
 
   const formRef = useRef<HTMLFormElement | null>(null);
   const titleInputRef = useRef<HTMLInputElement | null>(null);
   const showcaseAnchorRef = useRef<HTMLDivElement | null>(null);
+  const backupInputRef = useRef<HTMLInputElement | null>(null);
 
   const activePreset =
     OCCASION_PRESETS.find((p) => p.id === selectedOccasion) ?? OCCASION_PRESETS[2];
@@ -76,6 +94,53 @@ export function ProjectStart({
 
   const scrollToShowcase = () => {
     showcaseAnchorRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  };
+
+  const handleImportBackup = async (e: ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    e.target.value = '';
+    if (!file) return;
+
+    setImportingBackup(true);
+    setBackupError(null);
+    setImportedBanner(null);
+    try {
+      const result = await importProjectBackupFile(file);
+      onImportProject(result.project);
+      setImportedBanner(result);
+    } catch (err) {
+      setBackupError(
+        err instanceof Error
+          ? err.message
+          : 'Не удалось загрузить проект из резервной копии.',
+      );
+    } finally {
+      setImportingBackup(false);
+    }
+  };
+
+  const handleExportCardBackup = async (proj: ConstellationProject) => {
+    setExportingBackupId(proj.id);
+    setBackupError(null);
+    try {
+      const { blob, filename } = await exportProjectBackup(proj);
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = filename;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.setTimeout(() => URL.revokeObjectURL(url), 4000);
+    } catch (err) {
+      setBackupError(
+        err instanceof Error
+          ? err.message
+          : 'Не удалось сохранить резервную копию проекта.',
+      );
+    } finally {
+      setExportingBackupId(null);
+    }
   };
 
   const formatDate = (ts: number) =>
@@ -264,14 +329,83 @@ export function ProjectStart({
 
         {/* Saved Projects List */}
         <section className="space-y-4">
-          <div className="flex items-center justify-between gap-4">
-            <h2 className="gl-title-display font-display text-xl sm:text-2xl font-bold text-white">
-              Мои сохранённые проекты
-            </h2>
-            <span className="text-sm text-gl-text-muted tabular-nums">
-              {projects.length === 0 ? 'Пока нет проектов' : `Всего: ${projects.length}`}
-            </span>
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div className="flex items-baseline gap-3">
+              <h2 className="gl-title-display font-display text-xl sm:text-2xl font-bold text-white">
+                Мои сохранённые проекты
+              </h2>
+              <span className="text-sm text-gl-text-muted tabular-nums">
+                {projects.length === 0 ? 'Пока нет проектов' : `Всего: ${projects.length}`}
+              </span>
+            </div>
+
+            <div className="flex items-center gap-2 shrink-0">
+              <input
+                ref={backupInputRef}
+                data-testid="import-backup-input"
+                type="file"
+                accept=".json,.giftlab,application/json"
+                onChange={(e) => void handleImportBackup(e)}
+                className="hidden"
+              />
+              <button
+                type="button"
+                data-testid="import-backup-btn"
+                disabled={importingBackup}
+                onClick={() => backupInputRef.current?.click()}
+                className="gl-btn-secondary !min-h-[40px] px-4 text-xs sm:text-sm whitespace-nowrap shrink-0"
+              >
+                <Upload className="w-3.5 h-3.5 shrink-0 text-violet-300" />
+                <span>
+                  {importingBackup ? 'Загружаем копию...' : 'Загрузить из резервной копии'}
+                </span>
+              </button>
+            </div>
           </div>
+
+          {backupError && (
+            <div
+              role="alert"
+              data-testid="import-backup-error"
+              className="rounded-xl border border-rose-400/40 bg-rose-500/15 px-4 py-3 text-sm text-rose-100 flex items-start gap-2.5"
+            >
+              <AlertCircle className="w-4 h-4 text-rose-300 shrink-0 mt-0.5" />
+              <span>{backupError}</span>
+            </div>
+          )}
+
+          {importedBanner && (
+            <div
+              role="status"
+              data-testid="import-backup-success"
+              className="rounded-xl border border-emerald-400/35 bg-emerald-500/15 px-4 py-3 text-sm text-emerald-100 flex flex-wrap items-center justify-between gap-3"
+            >
+              <div className="flex items-start gap-2.5 min-w-0">
+                <CheckCircle2 className="w-4 h-4 text-emerald-300 shrink-0 mt-0.5" />
+                <div className="space-y-0.5 min-w-0">
+                  <p>
+                    Проект «<span className="font-semibold">{importedBanner.project.title}</span>» загружен и готов к редактированию.
+                  </p>
+                  {importedBanner.skippedMissingAssets.length > 0 && (
+                    <p className="text-xs text-amber-200/90">
+                      Часть отсутствующих медиа заменили на стандартные: {importedBanner.skippedMissingAssets.join(', ')}.
+                    </p>
+                  )}
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  const target = importedBanner.project;
+                  setImportedBanner(null);
+                  onOpenProject(target);
+                }}
+                className="gl-btn-primary !min-h-[36px] px-4 text-xs whitespace-nowrap shrink-0"
+              >
+                Открыть в редакторе
+              </button>
+            </div>
+          )}
 
           {loading ? (
             <div className="rounded-2xl border border-white/10 bg-gl-card/55 p-6 text-center text-base text-gl-text-secondary">
@@ -285,7 +419,7 @@ export function ProjectStart({
                   Здесь появятся ваши созвездия
                 </p>
                 <p className="text-sm sm:text-base text-gl-text-secondary">
-                  Создайте первый проект выше — все изменения будут сохраняться автоматически.
+                  Создайте первый проект выше или загрузите сохранённую копию (.giftlab.json).
                 </p>
               </div>
             </div>
@@ -320,52 +454,77 @@ export function ProjectStart({
                       </div>
                     </div>
 
-                    <div className="px-4 pb-4 flex items-center gap-2">
+                    <div className="px-4 pb-4 space-y-2">
                       <button
                         type="button"
                         onClick={() => onOpenProject(proj)}
-                        className="gl-btn-primary flex-1 !min-h-[42px] px-3.5 text-sm"
+                        className="gl-btn-primary w-full !min-h-[42px] px-4 text-sm"
                       >
-                        <FolderOpen className="w-4 h-4" />
+                        <FolderOpen className="w-4 h-4 shrink-0" />
                         Редактировать
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => onPreviewProject(proj)}
-                        title="Открыть как получатель"
-                        className="gl-btn-icon"
-                      >
-                        <Eye className="w-4 h-4" />
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => onDuplicateProject(proj)}
-                        title="Создать копию"
-                        className="gl-btn-icon"
-                      >
-                        <Copy className="w-4 h-4" />
                       </button>
 
                       {confirmDeleteId === proj.id ? (
-                        <button
-                          type="button"
-                          onClick={() => {
-                            onDeleteProject(proj.id);
-                            setConfirmDeleteId(null);
-                          }}
-                          className="min-h-[42px] rounded-[14px] bg-rose-600 hover:bg-rose-500 px-3 py-2 text-xs font-semibold text-white cursor-pointer whitespace-nowrap"
-                        >
-                          Удалить?
-                        </button>
+                        <div className="grid grid-cols-2 gap-2">
+                          <button
+                            type="button"
+                            onClick={() => setConfirmDeleteId(null)}
+                            className="gl-btn-secondary w-full !min-h-[40px] px-3 text-xs"
+                          >
+                            Отмена
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              onDeleteProject(proj.id);
+                              setConfirmDeleteId(null);
+                            }}
+                            className="min-h-[40px] w-full rounded-[14px] bg-rose-600 hover:bg-rose-500 px-3 py-2 text-xs font-semibold text-white cursor-pointer whitespace-nowrap"
+                          >
+                            Удалить
+                          </button>
+                        </div>
                       ) : (
-                        <button
-                          type="button"
-                          onClick={() => setConfirmDeleteId(proj.id)}
-                          title="Удалить проект"
-                          className="gl-btn-icon hover:bg-rose-500/20 hover:border-rose-400/40 hover:text-rose-200"
-                        >
-                          <Trash2 className="w-4 h-4" />
-                        </button>
+                        <div className="grid grid-cols-4 gap-2">
+                          <button
+                            type="button"
+                            onClick={() => onPreviewProject(proj)}
+                            title="Открыть как получатель"
+                            aria-label="Открыть как получатель"
+                            className="gl-btn-icon w-full !min-w-0 !min-h-[40px]"
+                          >
+                            <Eye className="w-4 h-4" />
+                          </button>
+                          <button
+                            type="button"
+                            data-testid={`export-project-backup-${proj.id}`}
+                            disabled={exportingBackupId === proj.id}
+                            onClick={() => void handleExportCardBackup(proj)}
+                            title="Скачать резервную копию (.giftlab.json)"
+                            aria-label="Скачать резервную копию проекта"
+                            className="gl-btn-icon w-full !min-w-0 !min-h-[40px]"
+                          >
+                            <HardDriveDownload className="w-4 h-4" />
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => onDuplicateProject(proj)}
+                            title="Создать копию"
+                            aria-label="Создать копию проекта"
+                            className="gl-btn-icon w-full !min-w-0 !min-h-[40px]"
+                          >
+                            <Copy className="w-4 h-4" />
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setConfirmDeleteId(proj.id)}
+                            title="Удалить проект"
+                            aria-label="Удалить проект"
+                            className="gl-btn-icon w-full !min-w-0 !min-h-[40px] hover:bg-rose-500/20 hover:border-rose-400/40 hover:text-rose-200"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        </div>
                       )}
                     </div>
                   </article>

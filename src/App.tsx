@@ -31,6 +31,14 @@ import type {
   RecipientPhase,
 } from './types/project';
 import { resolveViewportDeviceMode } from './scene/paletteConfig';
+import {
+  collectHistoryReferencedAssetIds,
+  createProjectHistory,
+  pushProjectHistory,
+  redoProjectHistory,
+  undoProjectHistory,
+  type ProjectHistoryState,
+} from './scene/projectHistory';
 
 function mergeStarPatchLocal(
   star: ConstellationStar,
@@ -354,12 +362,17 @@ function StudioApp() {
   const [projects, setProjects] = useState<ConstellationProject[]>([]);
   const [loading, setLoading] = useState(true);
   const [screen, setScreen] = useState<AppScreen>('start');
-  const [activeProject, setActiveProject] = useState<ConstellationProject | null>(
-    null,
-  );
+  const [projectHistory, setProjectHistory] =
+    useState<ProjectHistoryState | null>(null);
   const [saveState, setSaveState] = useState<'saved' | 'saving'>('saved');
   const [dirtyTick, setDirtyTick] = useState(0);
 
+  const activeProject = projectHistory?.present ?? null;
+  const canUndo = (projectHistory?.past.length ?? 0) > 0;
+  const canRedo = (projectHistory?.future.length ?? 0) > 0;
+
+  const projectHistoryRef = useRef<ProjectHistoryState | null>(null);
+  projectHistoryRef.current = projectHistory;
   const saveTimerRef = useRef<number | null>(null);
   const editVersionRef = useRef(0);
   const previewReturnScreenRef = useRef<'start' | 'editor'>('start');
@@ -383,7 +396,7 @@ function StudioApp() {
   }, [reloadProjects]);
 
   const flushSave = useCallback(
-    async (proj: ConstellationProject) => {
+    async (proj: ConstellationProject, preserveHistoryAssets = true) => {
       if (saveTimerRef.current) {
         window.clearTimeout(saveTimerRef.current);
         saveTimerRef.current = null;
@@ -392,8 +405,11 @@ function StudioApp() {
       setDirtyTick(0);
       setSaveState('saving');
       const saved = await saveProject(proj);
-      await cleanupUnusedProjectImages(saved);
-      await cleanupUnusedProjectAudio(saved);
+      const preserved = preserveHistoryAssets
+        ? collectHistoryReferencedAssetIds(projectHistoryRef.current)
+        : null;
+      await cleanupUnusedProjectImages(saved, preserved?.imageIds);
+      await cleanupUnusedProjectAudio(saved, preserved?.audioIds);
       setProjects((prev) => {
         const exists = prev.some((p) => p.id === saved.id);
         const next = exists
@@ -415,7 +431,7 @@ function StudioApp() {
     }
     saveTimerRef.current = window.setTimeout(() => {
       saveTimerRef.current = null;
-      void flushSave(activeProject);
+      void flushSave(activeProject, true);
     }, 450);
 
     return () => {
@@ -430,16 +446,23 @@ function StudioApp() {
     const saved = await saveProject(project);
     setProjects((prev) => [saved, ...prev]);
     setDirtyTick(0);
-    setActiveProject(saved);
+    setProjectHistory(createProjectHistory(saved));
     setSaveState('saved');
     setScreen('editor');
   };
 
   const handleOpenProject = (project: ConstellationProject) => {
     setDirtyTick(0);
-    setActiveProject(project);
+    setProjectHistory(createProjectHistory(project));
     setSaveState('saved');
     setScreen('editor');
+  };
+
+  const handleImportProject = (imported: ConstellationProject) => {
+    setProjects((prev) => {
+      const filtered = prev.filter((p) => p.id !== imported.id);
+      return [imported, ...filtered].sort((a, b) => b.updatedAt - a.updatedAt);
+    });
   };
 
   const handlePreviewProject = (
@@ -448,7 +471,9 @@ function StudioApp() {
   ) => {
     previewReturnScreenRef.current = from;
     setDirtyTick(0);
-    setActiveProject(project);
+    if (from === 'start') {
+      setProjectHistory(createProjectHistory(project));
+    }
     setScreen('preview');
   };
 
@@ -462,7 +487,7 @@ function StudioApp() {
     setProjects((prev) => prev.filter((p) => p.id !== projectId));
     if (activeProject?.id === projectId) {
       setDirtyTick(0);
-      setActiveProject(null);
+      setProjectHistory(null);
       setScreen('start');
     }
   };
@@ -470,15 +495,48 @@ function StudioApp() {
   const handleUpdateProject = useCallback(
     (updater: (prev: ConstellationProject) => ConstellationProject) => {
       editVersionRef.current += 1;
-      setActiveProject((prev) => {
-        if (!prev) return prev;
-        return { ...updater(prev), updatedAt: Date.now() };
+      setProjectHistory((prevHistory) => {
+        if (!prevHistory) return prevHistory;
+        const next = { ...updater(prevHistory.present), updatedAt: Date.now() };
+        return pushProjectHistory(prevHistory, next);
       });
       setSaveState('saving');
       setDirtyTick((t) => t + 1);
     },
     [],
   );
+
+  const handleUndoProject = useCallback(() => {
+    const curr = projectHistoryRef.current;
+    if (!curr || curr.past.length === 0) return;
+    editVersionRef.current += 1;
+    setProjectHistory((prevHistory) => {
+      if (!prevHistory || prevHistory.past.length === 0) return prevHistory;
+      const undone = undoProjectHistory(prevHistory);
+      return {
+        ...undone,
+        present: { ...undone.present, updatedAt: Date.now() },
+      };
+    });
+    setSaveState('saving');
+    setDirtyTick((t) => t + 1);
+  }, []);
+
+  const handleRedoProject = useCallback(() => {
+    const curr = projectHistoryRef.current;
+    if (!curr || curr.future.length === 0) return;
+    editVersionRef.current += 1;
+    setProjectHistory((prevHistory) => {
+      if (!prevHistory || prevHistory.future.length === 0) return prevHistory;
+      const redone = redoProjectHistory(prevHistory);
+      return {
+        ...redone,
+        present: { ...redone.present, updatedAt: Date.now() },
+      };
+    });
+    setSaveState('saving');
+    setDirtyTick((t) => t + 1);
+  }, []);
 
   const backdropPaletteId =
     screen === 'start' ? 'lavender' : (activeProject?.paletteId ?? 'lavender');
@@ -496,7 +554,7 @@ function StudioApp() {
             }
             onExitPreview={async () => {
               if (saveTimerRef.current) {
-                await flushSave(activeProject);
+                await flushSave(activeProject, true);
               }
               setScreen(previewReturnScreenRef.current);
             }}
@@ -505,13 +563,18 @@ function StudioApp() {
           <EditorLayout
             project={activeProject}
             saveState={saveState}
+            canUndo={canUndo}
+            canRedo={canRedo}
+            onUndo={handleUndoProject}
+            onRedo={handleRedoProject}
             onUpdateProject={handleUpdateProject}
             onBackToProjects={async () => {
-              await flushSave(activeProject);
+              await flushSave(activeProject, false);
+              setProjectHistory(null);
               setScreen('start');
             }}
             onOpenPreview={async () => {
-              await flushSave(activeProject);
+              await flushSave(activeProject, true);
               handlePreviewProject(activeProject, 'editor');
             }}
           />
@@ -521,6 +584,7 @@ function StudioApp() {
             loading={loading}
             onCreateProject={handleCreateProject}
             onOpenProject={handleOpenProject}
+            onImportProject={handleImportProject}
             onPreviewProject={(proj) => handlePreviewProject(proj, 'start')}
             onDuplicateProject={handleDuplicateProject}
             onDeleteProject={handleDeleteProject}
