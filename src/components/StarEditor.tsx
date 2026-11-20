@@ -36,6 +36,7 @@ import { saveImageBlob } from '../services/database';
 import { processUploadedImage } from '../services/imageProcessor';
 import {
   isStarComplete,
+  isStarUnsignedAndEmpty,
   type ConstellationStar,
   type GlowColorId,
   type OccasionId,
@@ -242,7 +243,8 @@ export function StarEditor({
 
   const hasCustomTitle =
     star.title.trim().length > 0 && !/^Звезда\s+\d+$/.test(star.title.trim());
-  const hasMessage = !star.isDraft && star.message.trim().length > 0;
+  const hasMessage = star.message.trim().length > 0;
+  const unsignedEmpty = isStarUnsignedAndEmpty(star);
 
   return (
     <div className="space-y-3">
@@ -287,8 +289,10 @@ export function StarEditor({
               <Check className="w-3 h-3 shrink-0" />
               Готова
             </>
+          ) : unsignedEmpty ? (
+            'Стоит заполнить'
           ) : (
-            'В процессе'
+            'Нужен текст'
           )}
         </span>
       </div>

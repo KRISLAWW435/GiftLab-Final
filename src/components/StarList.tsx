@@ -8,7 +8,7 @@ import {
 import {
   MAX_STARS,
   isStarComplete,
-  isStarFilled,
+  isStarUnsignedAndEmpty,
   type ConstellationStar,
   type GlowColorId,
 } from '../types/project';
@@ -21,6 +21,16 @@ interface StarListProps {
   onSelectStar: (starId: string) => void;
   onAddStar: () => void;
   onRemoveStar: (starId: string) => void;
+}
+
+function resolveStarHoverTitle(star: ConstellationStar, idx: number): string {
+  if (isStarUnsignedAndEmpty(star)) {
+    return `Звезда ${idx + 1} не подписана и без текста — стоит заполнить`;
+  }
+  if (!isStarComplete(star)) {
+    return `${star.title.trim() || `Звезда ${idx + 1}`} — стоит заполнить текст`;
+  }
+  return star.title.trim() || `Звезда ${idx + 1}`;
 }
 
 export function StarList({
@@ -76,8 +86,10 @@ export function StarList({
           {stars.map((star, idx) => {
             const isSelected = star.id === selectedStarId;
             const complete = isStarComplete(star);
+            const unsignedEmpty = isStarUnsignedAndEmpty(star);
             const glowCfg = GLOW_COLORS[resolveStarGlowHex(star, globalGlowColor)];
             const shape = resolveStarShape(star);
+            const hoverTitle = resolveStarHoverTitle(star, idx);
 
             return (
               <button
@@ -85,7 +97,7 @@ export function StarList({
                 type="button"
                 data-selected={isSelected}
                 onClick={() => onSelectStar(star.id)}
-                title={star.title.trim() || `Звезда ${idx + 1}`}
+                title={hoverTitle}
                 className="gl-choice px-2 py-1.5 flex items-center gap-1.5 shrink-0"
               >
                 <StarShapePreview
@@ -102,7 +114,7 @@ export function StarList({
                 ) : (
                   <span
                     className="w-1.5 h-1.5 rounded-full bg-amber-300 shrink-0"
-                    aria-label={isStarFilled(star) ? 'Черновик' : 'Нужен текст'}
+                    aria-label={unsignedEmpty ? 'Стоит заполнить' : 'Нужен текст'}
                   />
                 )}
               </button>
@@ -138,8 +150,10 @@ export function StarList({
         {stars.map((star, idx) => {
           const isSelected = star.id === selectedStarId;
           const complete = isStarComplete(star);
+          const unsignedEmpty = isStarUnsignedAndEmpty(star);
           const glowCfg = GLOW_COLORS[resolveStarGlowHex(star, globalGlowColor)];
           const shape = resolveStarShape(star);
+          const hoverTitle = resolveStarHoverTitle(star, idx);
 
           return (
             <div
@@ -150,6 +164,7 @@ export function StarList({
               <button
                 type="button"
                 onClick={() => onSelectStar(star.id)}
+                title={hoverTitle}
                 className="flex-1 min-w-0 flex items-center gap-2 text-left cursor-pointer"
               >
                 <span className="w-7 h-7 rounded-lg flex items-center justify-center shrink-0 border border-white/10 bg-gl-input">
@@ -176,10 +191,10 @@ export function StarList({
                         <Check className="w-2.5 h-2.5 shrink-0" />
                         Готова
                       </span>
-                    ) : isStarFilled(star) ? (
-                      <span className="text-amber-300/90">Черновик</span>
                     ) : (
-                      <span className="text-amber-300/90">Нужен текст</span>
+                      <span className="text-amber-300/90">
+                        {unsignedEmpty ? 'Стоит заполнить' : 'Нужен текст'}
+                      </span>
                     )}
                   </div>
                 </div>

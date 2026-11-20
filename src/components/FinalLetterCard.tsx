@@ -2,24 +2,10 @@ import { useEffect, useRef, type RefObject } from 'react';
 import { Pencil, Sparkles, X } from 'lucide-react';
 import { AnimatePresence, motion } from 'motion/react';
 import type { EditableCardTarget, EditableTextField } from '../preview/previewProtocol';
-import {
-  GLOW_COLORS,
-  computeTextBlockMarginLeftPct,
-  isDefaultStarTextStyle,
-  resolveCardColors,
-  resolveCardTheme,
-  resolveContrastSafeCardTextColor,
-  resolveEffectiveCardLayout,
-  resolveEffectiveFinalDecor,
-  resolveEffectiveFinalTextStyle,
-  resolveMessageFont,
-  resolveSafeCardDecorPresentation,
-  resolveTextShadowCss,
-} from '../scene/paletteConfig';
+import { computeFinalLetterPresentation } from '../scene/paletteConfig';
 import type {
   ConstellationProject,
   DeviceLayoutKey,
-  MessageTextAlign,
 } from '../types/project';
 import { CardDecorView } from './CardDecorView';
 import { CardThemeBackdrop } from './CardThemeBackdrop';
@@ -185,158 +171,44 @@ export function FinalLetterCard({
   const activeDevice: DeviceLayoutKey =
     deviceMode ?? (isPortrait || isCompactLandscape ? 'phone' : 'desktop');
 
-  const cardTheme = resolveCardTheme(project.cardTheme);
-  const cardColors = resolveCardColors(project);
-  const globalGlow = GLOW_COLORS[project.globalGlowColor];
-  const isMinimalist = cardTheme.id === 'minimalist';
-  const isFrostedDark = !cardColors.isLightPaper;
-
-  const resolvedText = resolveEffectiveFinalTextStyle(project, activeDevice);
-  const isDefaultSharedText =
-    !project.finalTextStyle || isDefaultStarTextStyle(resolvedText);
-
-  const fontMeta = resolveMessageFont(resolvedText.fontId);
-  const sansFontMeta = resolveMessageFont('manrope');
-
-  const effectiveAlign: Exclude<MessageTextAlign, 'auto'> =
-    resolvedText.textAlign !== 'auto'
-      ? resolvedText.textAlign
-      : isMinimalist
-        ? 'left'
-        : 'center';
-
-  const rawTextColor =
-    project.finalTextStyle && !isDefaultSharedText
-      ? resolvedText.color
-      : project.cardColors?.textColor ??
-        (project.cardTheme ? cardColors.textColor : resolvedText.color);
-  const effectiveTextColor = resolveContrastSafeCardTextColor(
-    rawTextColor,
-    project,
+  const {
+    cardTheme,
     cardColors,
-  );
-
-  const effectiveShadow =
-    cardColors.isLightPaper && resolvedText.shadow === 'soft' && !project.finalTextStyle
-      ? 'none'
-      : cardColors.isLightPaper && resolvedText.shadow !== 'glow'
-        ? 'none'
-        : resolvedText.shadow;
-
-  const textShadowCss = resolveTextShadowCss(effectiveShadow, globalGlow.hex);
-  const finalDecor = resolveEffectiveFinalDecor(project, activeDevice);
-  const safeDecor = resolveSafeCardDecorPresentation(finalDecor, {
-    editMode: false,
-    textLength: (project.finalMessage || '').length,
-    compactViewport: isPortrait || isCompactLandscape,
+    globalGlow,
+    isMinimalist,
+    isFrostedDark,
+    resolvedText,
+    fontMeta,
+    sansFontMeta,
+    effectiveAlign,
+    effectiveTextColor,
+    textShadowCss,
+    finalDecor,
+    safeDecor,
+    cardLayout,
+    bodyPx,
+    headerPx,
+    signaturePx,
+    accentStroke,
+    crestGlowHex,
+    crestCoreHex,
+    widthClass,
+    headerPadClass,
+    bodyPadClass,
+    footerPadClass,
+    alignItemsClass,
+    topPadClass,
+    cardShiftY,
+    cardScale,
+    textMarginLeftPct,
+    textShiftY,
+  } = computeFinalLetterPresentation(project, {
+    device: activeDevice,
+    isPortrait,
+    isCompactLandscape,
+    editMode,
   });
-  const cardLayout = resolveEffectiveCardLayout(project, activeDevice);
-
-  const bodyPx = Math.min(
-    isCompactLandscape ? 19 : isPortrait ? 24 : 30,
-    Math.max(
-      12,
-      Math.round((resolvedText.fontSize + fontMeta.opticalSizeBoost) * 1.15),
-    ),
-  );
-  const headerPx = Math.max(
-    12,
-    Math.min(isPortrait ? 15 : 20, Math.round(bodyPx * 0.68)),
-  );
-  const signaturePx = Math.max(15, Math.min(24, Math.round(bodyPx * 0.8)));
-
   const effectiveAccent = resolvedText.accent;
-  const accentStroke = cardColors.accentColor || globalGlow.hex;
-  const crestGlowHex = cardColors.isLightPaper ? cardColors.accentColor : globalGlow.hex;
-  const crestCoreHex = cardColors.isLightPaper ? cardColors.badgeColor : globalGlow.coreHex;
-
-  const widthClass = cardLayout.customWidthPx
-    ? 'max-w-[94vw]'
-    : isCompactLandscape
-      ? 'max-w-xl'
-      : activeDevice === 'phone'
-        ? cardLayout.width === 'compact'
-          ? 'max-w-[min(86vw,330px)]'
-          : cardLayout.width === 'wide'
-            ? 'max-w-[min(96vw,440px)]'
-            : 'max-w-[min(92vw,390px)]'
-        : cardLayout.width === 'compact'
-          ? 'max-w-[min(92vw,440px)]'
-          : cardLayout.width === 'wide'
-            ? 'max-w-[min(92vw,680px)]'
-            : 'max-w-[min(92vw,540px)]';
-
-  const hasDecorSafeMargin = finalDecor.motif !== 'none' && !editMode;
-
-  const headerPadClass = isMinimalist
-    ? cardLayout.padding === 'compact'
-      ? 'pl-8 sm:pl-11 pr-5 sm:pr-7 pt-4 pb-2'
-      : 'pl-9 sm:pl-12 pr-6 sm:pr-8 pt-5 sm:pt-6 pb-2.5'
-    : cardLayout.padding === 'compact'
-      ? 'px-4 sm:px-5 pt-3 pb-1.5'
-      : cardLayout.padding === 'spacious'
-        ? 'px-6 sm:px-9 pt-5 sm:pt-6 pb-3'
-        : 'px-5 sm:px-7 pt-4 sm:pt-5 pb-2';
-
-  const bodyPadClass = isMinimalist
-    ? cardLayout.padding === 'compact'
-      ? isCompactLandscape
-        ? 'max-h-[42dvh] pl-8 sm:pl-11 pr-5 sm:pr-8 py-3.5'
-        : isPortrait
-          ? 'max-h-[48dvh] pl-8 pr-6 py-4'
-          : 'max-h-[52dvh] pl-11 pr-9 py-5'
-      : isCompactLandscape
-        ? 'max-h-[46dvh] pl-9 sm:pl-12 pr-6 sm:pr-9 py-4'
-        : isPortrait
-          ? 'max-h-[52dvh] pl-8 pr-6 py-5'
-          : 'max-h-[58dvh] pl-12 pr-10 py-7 sm:py-8'
-    : cardLayout.padding === 'compact'
-      ? isCompactLandscape
-        ? 'max-h-[42dvh] px-4 py-2.5'
-        : isPortrait
-          ? 'max-h-[48dvh] px-4 py-3'
-          : 'max-h-[50dvh] px-5 py-3.5'
-      : cardLayout.padding === 'spacious'
-        ? isCompactLandscape
-          ? 'max-h-[46dvh] px-6 py-4'
-          : isPortrait
-            ? 'max-h-[54dvh] px-6 py-5'
-            : 'max-h-[58dvh] px-9 py-6 sm:py-7'
-        : isCompactLandscape
-          ? 'max-h-[44dvh] px-5 py-3'
-          : isPortrait
-            ? `max-h-[50dvh] ${hasDecorSafeMargin ? 'px-6' : 'px-5'} py-4`
-            : `max-h-[54dvh] ${hasDecorSafeMargin ? 'px-7 sm:px-10' : 'px-5 sm:px-8'} py-5 sm:py-6`;
-
-  const footerPadClass = isMinimalist
-    ? cardLayout.padding === 'compact'
-      ? 'pl-8 sm:pl-11 pr-5 sm:pr-7 pb-4 pt-1.5'
-      : 'pl-9 sm:pl-12 pr-6 sm:pr-8 pb-5 sm:pb-6 pt-2'
-    : cardLayout.padding === 'compact'
-      ? 'px-4 sm:px-5 pb-2.5 pt-1'
-      : cardLayout.padding === 'spacious'
-        ? 'px-6 sm:px-9 pb-5 pt-2'
-        : 'px-5 sm:px-7 pb-3.5 sm:pb-4 pt-1';
-
-  const alignItemsClass =
-    cardLayout.verticalAlign === 'top' ? 'items-start' : 'items-center';
-
-  const cardShiftY = Math.round(cardLayout.offsetY * 1.4);
-  const cardScale = cardLayout.scale ?? 1;
-  const textMarginLeftPct = computeTextBlockMarginLeftPct(
-    resolvedText.widthPct,
-    resolvedText.offsetX,
-  );
-  const textShiftY = Math.round(resolvedText.offsetY * 0.25);
-
-  const topPadClass =
-    cardLayout.verticalAlign === 'top'
-      ? isCompactLandscape
-        ? 'pt-14 pb-3'
-        : 'pt-16 sm:pt-20 pb-4'
-      : isCompactLandscape
-        ? 'pt-8 pb-3'
-        : 'pt-10 sm:pt-12 pb-4';
 
   const handleRecipientSwipeDown = (e: React.PointerEvent<HTMLElement>) => {
     if (editMode) return;

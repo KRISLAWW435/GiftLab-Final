@@ -7,16 +7,18 @@ import {
   resolveStarGlowHex,
   resolveStarShape,
 } from '../scene/paletteConfig';
-import type {
-  ConstellationAnimationId,
-  ConstellationStar,
-  CosmicPaletteId,
-  DeviceConstellationLayout,
-  EditorInteractionMode,
-  GlowColorId,
-  RecipientPhase,
-  StarConnection,
-  StarPosition3D,
+import {
+  isStarFilled,
+  isStarUnsignedAndEmpty,
+  type ConstellationAnimationId,
+  type ConstellationStar,
+  type CosmicPaletteId,
+  type DeviceConstellationLayout,
+  type EditorInteractionMode,
+  type GlowColorId,
+  type RecipientPhase,
+  type StarConnection,
+  type StarPosition3D,
 } from '../types/project';
 
 interface Constellation2DFallbackProps {
@@ -299,6 +301,13 @@ export function Constellation2DFallback({
                 opacity: isBgStory ? 0.55 : 1,
                 zIndex: isHero ? 5 : 1,
               }}
+              title={
+                interactionMode !== 'recipient' && isStarUnsignedAndEmpty(star)
+                  ? `Звезда ${idx + 1} не подписана и текст пустой — стоит заполнить`
+                  : interactionMode !== 'recipient' && !isStarFilled(star)
+                    ? `${star.title.trim() || `Звезда ${idx + 1}`} — стоит заполнить текст`
+                    : star.title || `Звезда ${idx + 1}`
+              }
               aria-label={star.title || `Звезда ${idx + 1}`}
             >
               <span

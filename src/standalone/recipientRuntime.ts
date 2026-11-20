@@ -1,34 +1,24 @@
 import { ConstellationEngine } from '../scene/ConstellationEngine';
 import {
   COSMIC_PALETTES,
-  ENVELOPE_VISIBLE_WORLD_H,
-  ENVELOPE_WORLD_H,
-  ENVELOPE_WORLD_W,
   GLOW_COLORS,
-  computeEnvelopeScreenOffsetYPx,
-  computeEnvelopeTextTranslateYPx,
-  computeTextBlockMarginLeftPct,
-  isDefaultStarTextStyle,
+  computeEnvelopeScreenGeometry,
+  computeFinalLetterPresentation,
+  computeStoryCardPresentation,
+  getEnvelope2DSvgSpec,
+  getEnvelopeMotifSvgElements,
+  hexWithAlpha,
   resolveCardColors,
   resolveCardTheme,
-  resolveContrastSafeCardTextColor,
-  resolveEffectiveCardLayout,
   resolveEffectiveConstellationLayout,
-  resolveEffectiveFinalDecor,
-  resolveEffectiveFinalTextStyle,
-  resolveEffectiveIllustrationLayout,
-  resolveEffectiveStarDecor,
-  resolveEffectiveStarTextStyle,
-  resolveEnvelopeEffectiveWorldScale,
-  resolveEnvelopeOffsetY,
+  resolveEnvelopeGlowFactors,
+  resolveEnvelopePaletteColors,
   resolveEnvelopeSettings,
-  resolveEnvelopeTextOffsetY,
   resolveMessageFont,
-  resolveSafeCardDecorPresentation,
+  resolveSealPaletteColors,
   resolveStarGlowHex,
   resolveStarImageSettings,
   resolveStarShape,
-  resolveTextShadowCss,
   resolveViewportDeviceMode,
   sanitizeConnections,
 } from '../scene/paletteConfig';
@@ -42,7 +32,6 @@ import type {
   DeviceLayoutKey,
   EnvelopeSettings,
   GlowColorId,
-  MessageTextAlign,
   ProjectDeviceLayouts,
   RecipientPhase,
   StarConnection,
@@ -847,8 +836,15 @@ function bootGiftLabRecipient(): void {
     payload.senderName?.trim() ||
     (payload.recipientName ? `Для ${payload.recipientName}` : '');
   const resolvedEnvelope = resolveEnvelopeSettings(payload);
-  const sealHex = resolvedEnvelope.sealColor ?? globalGlow.hex;
-  const sealCoreHex = resolvedEnvelope.sealColor ?? globalGlow.coreHex;
+  const envColors = resolveEnvelopePaletteColors(resolvedEnvelope.envelopeColor, palette);
+  const sealColors = resolveSealPaletteColors(resolvedEnvelope.sealColor, globalGlow);
+  const envGlowFactors = resolveEnvelopeGlowFactors(
+    resolvedEnvelope.glowIntensity,
+    envColors,
+    sealColors,
+  );
+  const envSvgSpec = getEnvelope2DSvgSpec(resolvedEnvelope.shape);
+  const envMotifEls = getEnvelopeMotifSvgElements(resolvedEnvelope.motif);
 
   // Stage container
   const stage = el('div', 'gl-stage');
@@ -856,44 +852,93 @@ function bootGiftLabRecipient(): void {
   const canvasHost = el('div', 'gl-canvas');
   stage.appendChild(canvasHost);
 
-  // 2D Sealed envelope fallback layer (frosted translucent envelope + indigo glow)
+  // 2D Sealed envelope fallback layer (frosted translucent envelope + glow)
   const sealed2DOverlay = el('div', 'gl-2d-sealed gl-hidden');
   sealed2DOverlay.style.background = palette.cssGradient;
   const sealed2DGlow = el('div', 'gl-2d-sealed-glow');
-  sealed2DGlow.style.background = `radial-gradient(ellipse 68% 52% at 50% 56%, ${
-    resolvedEnvelope.envelopeColor ?? palette.nebulaPrimary
-  }55 0%, rgba(167,139,250,0.22) 38%, transparent 74%)`;
+  sealed2DGlow.style.background = `radial-gradient(ellipse 68% 52% at 50% 56%, ${hexWithAlpha(
+    envColors.bodyHex,
+    envGlowFactors.fallbackGlowAlpha,
+  )} 0%, ${hexWithAlpha('#A78BFA', envGlowFactors.ambientBackdropAlpha * 0.85)} 38%, transparent 74%)`;
   const sealed2DBox = el('div', 'gl-2d-envelope');
-  if (resolvedEnvelope.envelopeColor) {
-    sealed2DBox.style.background = `linear-gradient(155deg, ${resolvedEnvelope.envelopeColor}CC 0%, ${resolvedEnvelope.envelopeColor}78 100%)`;
-  }
-  const flapSvg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+  sealed2DBox.style.borderRadius = `${envSvgSpec.borderRadiusPx}px`;
+  sealed2DBox.style.background = `linear-gradient(155deg, ${envColors.bodyHex} 0%, ${envColors.pocketHex} 100%)`;
+
+  const svgNs = 'http://www.w3.org/2000/svg';
+  const flapSvg = document.createElementNS(svgNs, 'svg');
   flapSvg.setAttribute('viewBox', '0 0 320 192');
+  flapSvg.setAttribute('preserveAspectRatio', 'none');
   flapSvg.setAttribute('class', 'gl-2d-envelope-flap');
   flapSvg.setAttribute('aria-hidden', 'true');
-  const p1 = document.createElementNS('http://www.w3.org/2000/svg', 'path');
-  p1.setAttribute('d', 'M0 0L160 112L320 0');
-  p1.setAttribute('fill', 'rgba(255,255,255,0.18)');
-  p1.setAttribute('stroke', 'rgba(255,255,255,0.68)');
-  p1.setAttribute('stroke-width', '1.6');
-  const p2 = document.createElementNS('http://www.w3.org/2000/svg', 'path');
-  p2.setAttribute('d', 'M0 192L122 96M320 192L198 96');
-  p2.setAttribute('stroke', 'rgba(255,255,255,0.36)');
-  p2.setAttribute('stroke-width', '1.4');
-  flapSvg.append(p1, p2);
+  const pocketPath = document.createElementNS(svgNs, 'path');
+  pocketPath.setAttribute('d', envSvgSpec.pocketPath);
+  pocketPath.setAttribute('fill', envColors.pocketHex);
+  pocketPath.setAttribute('fill-opacity', '0.88');
+  pocketPath.setAttribute('stroke', envColors.borderHex);
+  pocketPath.setAttribute('stroke-opacity', '0.48');
+  pocketPath.setAttribute('stroke-width', '1.6');
+  const flapPath = document.createElementNS(svgNs, 'path');
+  flapPath.setAttribute('d', envSvgSpec.flapPath);
+  flapPath.setAttribute('fill', envColors.flapHex);
+  flapPath.setAttribute('fill-opacity', '0.92');
+  flapPath.setAttribute('stroke', envColors.borderHex);
+  flapPath.setAttribute('stroke-opacity', '0.78');
+  flapPath.setAttribute('stroke-width', '2');
+  flapSvg.append(pocketPath, flapPath);
+
   const sealed2DSeal = el('div', 'gl-2d-seal');
-  sealed2DSeal.style.background = `radial-gradient(circle, #FFFFFF 8%, ${sealCoreHex} 58%, ${sealHex} 100%)`;
-  sealed2DSeal.style.boxShadow = `0 0 28px ${sealHex}`;
+  sealed2DSeal.style.marginTop = `${envSvgSpec.sealTopOffsetPx}px`;
+  sealed2DSeal.style.backgroundColor = sealColors.discHex;
+  sealed2DSeal.style.borderColor = sealColors.rimHex;
+  sealed2DSeal.style.boxShadow = `0 6px 20px rgba(0,0,0,0.4), 0 0 24px ${hexWithAlpha(
+    sealColors.haloHex,
+    envGlowFactors.sealShadowHaloAlpha,
+  )}`;
+  const sealStarSvg = document.createElementNS(svgNs, 'svg');
+  sealStarSvg.setAttribute('viewBox', '0 0 32 32');
+  sealStarSvg.setAttribute('width', '30');
+  sealStarSvg.setAttribute('height', '30');
+  sealStarSvg.setAttribute('aria-hidden', 'true');
+  const starPoly = document.createElementNS(svgNs, 'polygon');
+  const starPts = Array.from({ length: 8 }, (_, idx) => {
+    const a = (idx * Math.PI) / 4 - Math.PI / 2;
+    const r = idx % 2 === 0 ? 11 : 4.6;
+    return `${(16 + Math.cos(a) * r).toFixed(2)},${(16 + Math.sin(a) * r).toFixed(2)}`;
+  }).join(' ');
+  starPoly.setAttribute('points', starPts);
+  starPoly.setAttribute('fill', sealColors.starHex);
+  sealStarSvg.appendChild(starPoly);
+  sealed2DSeal.appendChild(sealStarSvg);
+
   sealed2DBox.append(flapSvg, sealed2DSeal);
+  if (envMotifEls.length > 0) {
+    const motifWrap = el('div', 'gl-2d-motif');
+    motifWrap.style.color = envColors.motifInkHex;
+    motifWrap.style.border = `1.5px dashed ${envColors.motifInkHex}88`;
+    motifWrap.style.background = envColors.isLightBody
+      ? 'rgba(45,27,78,0.06)'
+      : 'rgba(255,255,255,0.1)';
+    const motifSvg = document.createElementNS(svgNs, 'svg');
+    motifSvg.setAttribute('viewBox', '0 0 48 48');
+    motifSvg.setAttribute('width', '26');
+    motifSvg.setAttribute('height', '26');
+    motifSvg.setAttribute('aria-hidden', 'true');
+    for (const item of envMotifEls) {
+      const node = document.createElementNS(svgNs, item.tag);
+      for (const [k, v] of Object.entries(item.attrs)) {
+        const attrName = k.replace(/[A-Z]/g, (m) => `-${m.toLowerCase()}`);
+        node.setAttribute(attrName, v);
+      }
+      motifSvg.appendChild(node);
+    }
+    motifWrap.appendChild(motifSvg);
+    sealed2DBox.appendChild(motifWrap);
+  }
   sealed2DOverlay.append(sealed2DGlow, sealed2DBox);
   stage.appendChild(sealed2DOverlay);
 
   // PHASE 1: Sealed Envelope UI
   const sealedUi = el('div', 'gl-sealed-ui');
-  const sealedAmbient = el('div', 'gl-2d-sealed-glow');
-  sealedAmbient.style.background = `radial-gradient(ellipse 64% 48% at 50% 56%, ${
-    resolvedEnvelope.envelopeColor ?? palette.nebulaPrimary
-  }42 0%, transparent 72%)`;
   const sealedHeader = el('div', 'gl-sealed-head');
   const sealedKicker = el('div', 'gl-kicker', resolvedEnvelope.kickerText);
   const sealedTitle = el('h1', 'gl-title', resolvedEnvelope.headlineText);
@@ -914,7 +959,7 @@ function bootGiftLabRecipient(): void {
   sealedFsBtn.setAttribute('data-fullscreen-toggle', 'true');
   sealedFsWrap.appendChild(sealedFsBtn);
 
-  sealedUi.append(sealedAmbient, sealedFsWrap, sealedHeader, sealedFooter);
+  sealedUi.append(sealedFsWrap, sealedHeader, sealedFooter);
   stage.appendChild(sealedUi);
 
   function applySealedComposition(): void {
@@ -922,24 +967,21 @@ function bootGiftLabRecipient(): void {
     const h = Math.max(1, window.innerHeight);
     const isPortrait = h > w || w < 540;
     const activeDevice = resolveViewportDeviceMode(w, h);
-    const textOffsetY = resolveEnvelopeTextOffsetY(payload.envelopeSettings, activeDevice);
-    const textOffsetPx = computeEnvelopeTextTranslateYPx(textOffsetY, h, isPortrait);
-    sealedHeader.style.transform = textOffsetPx !== 0 ? `translateY(${textOffsetPx}px)` : '';
-
-    const aspect = Math.max(0.25, w / h);
-    const worldScale = resolveEnvelopeEffectiveWorldScale(
-      payload.envelopeSettings,
-      aspect,
+    const envGeom = computeEnvelopeScreenGeometry(
+      payload,
+      w,
+      h,
       activeDevice,
+      isPortrait,
     );
-    const pxPerUnit = h / ENVELOPE_VISIBLE_WORLD_H;
-    const boxW = Math.round(ENVELOPE_WORLD_W * worldScale * pxPerUnit);
-    const boxH = Math.round(ENVELOPE_WORLD_H * worldScale * pxPerUnit);
-    const envOffsetY = resolveEnvelopeOffsetY(payload.envelopeSettings, activeDevice);
-    const envOffsetPx = computeEnvelopeScreenOffsetYPx(envOffsetY, w, h);
-    sealed2DBox.style.width = `${boxW}px`;
-    sealed2DBox.style.height = `${boxH}px`;
-    sealed2DBox.style.transform = envOffsetPx !== 0 ? `translateY(${envOffsetPx}px)` : '';
+    sealedHeader.style.transform =
+      envGeom.textTranslateYPx !== 0 ? `translateY(${envGeom.textTranslateYPx}px)` : '';
+    sealedFooter.style.transform =
+      envGeom.footerTranslateYPx !== 0 ? `translateY(${envGeom.footerTranslateYPx}px)` : '';
+    sealed2DBox.style.width = `${envGeom.boxW}px`;
+    sealed2DBox.style.height = `${envGeom.boxH}px`;
+    sealed2DBox.style.transform =
+      envGeom.screenOffsetYPx !== 0 ? `translateY(${envGeom.screenOffsetYPx}px)` : '';
   }
   applySealedComposition();
 
@@ -1196,15 +1238,32 @@ function bootGiftLabRecipient(): void {
     const activeDevice = getActiveDevice();
     const isPortrait = window.innerHeight > window.innerWidth || window.innerWidth < 540;
     const isCompactLandscape = !isPortrait && window.innerHeight < 520;
-    const cardLayout = resolveEffectiveCardLayout(payload, activeDevice);
-    const fDecor = resolveEffectiveFinalDecor(payload, activeDevice);
-    const safeFDecor = resolveSafeCardDecorPresentation(fDecor, {
+    const pres = computeFinalLetterPresentation(payload, {
+      device: activeDevice,
+      isPortrait,
+      isCompactLandscape,
       editMode: false,
-      textLength: (payload.finalMessage || '').length,
-      compactViewport: isPortrait || isCompactLandscape,
     });
-    const decorGlowHex = cardColors.isLightPaper ? cardColors.accentColor : globalGlow.hex;
-    const decorCoreHex = cardColors.isLightPaper ? cardColors.badgeColor : globalGlow.coreHex;
+    const {
+      cardLayout,
+      finalDecor: fDecor,
+      safeDecor: safeFDecor,
+      crestGlowHex: decorGlowHex,
+      crestCoreHex: decorCoreHex,
+      resolvedText: style,
+      fontMeta,
+      effectiveAlign: align,
+      effectiveTextColor: textColor,
+      textShadowCss: shadowCss,
+      bodyPx: finalePx,
+      headerPx,
+      signaturePx,
+      cardShiftY,
+      cardScale,
+      textMarginLeftPct,
+      textShiftY,
+    } = pres;
+
     finaleDecorEl.innerHTML = '';
     if (fDecor.motif !== 'none') {
       const svg = createCardDecorSvg(fDecor.motif, decorGlowHex, decorCoreHex);
@@ -1247,8 +1306,6 @@ function bootGiftLabRecipient(): void {
     letterCard.style.minHeight = cardLayout.customHeightPx
       ? `${cardLayout.customHeightPx}px`
       : '';
-    const cardShiftY = Math.round(cardLayout.offsetY * 1.4);
-    const cardScale = cardLayout.scale ?? 1;
     letterCard.style.translate = cardShiftY !== 0 ? `0 ${cardShiftY}px` : '';
     letterCard.style.scale = cardScale !== 1 ? String(cardScale) : '';
     letterCard.style.transformOrigin = 'center center';
@@ -1272,25 +1329,6 @@ function bootGiftLabRecipient(): void {
       finaleSpacerFoot.style.padding = '';
     }
 
-    const style = resolveEffectiveFinalTextStyle(payload, activeDevice);
-    const isDefault = !payload.finalTextStyle || isDefaultStarTextStyle(style);
-    const fontMeta = resolveMessageFont(style.fontId);
-    const align: Exclude<MessageTextAlign, 'auto'> =
-      style.textAlign !== 'auto'
-        ? style.textAlign
-        : isMinimalistTheme
-          ? 'left'
-          : 'center';
-    const rawTextColor =
-      payload.finalTextStyle && !isDefault
-        ? style.color
-        : payload.cardColors?.textColor ??
-          (payload.cardTheme ? cardColors.textColor : style.color);
-    const textColor = resolveContrastSafeCardTextColor(rawTextColor, payload, cardColors);
-    const shadowMode =
-      cardColors.isLightPaper && style.shadow !== 'glow' ? 'none' : style.shadow;
-    const shadowCss = resolveTextShadowCss(shadowMode, globalGlow.hex);
-
     letterInner.classList.remove(
       'gl-story-block-frame',
       'gl-story-block-frame-light',
@@ -1298,8 +1336,7 @@ function bootGiftLabRecipient(): void {
       'gl-story-block-quote-right',
     );
     letterInner.style.width = `${style.widthPct}%`;
-    letterInner.style.marginLeft = `${computeTextBlockMarginLeftPct(style.widthPct, style.offsetX)}%`;
-    const textShiftY = Math.round(style.offsetY * 0.25);
+    letterInner.style.marginLeft = `${textMarginLeftPct}%`;
     letterInner.style.translate = textShiftY !== 0 ? `0 ${textShiftY}px` : '';
     letterInner.style.textAlign = align;
     letterInner.style.fontFamily = fontMeta.cssFamily;
@@ -1327,16 +1364,6 @@ function bootGiftLabRecipient(): void {
     } else {
       finaleAccentLine.classList.add('gl-hidden');
     }
-
-    const finalePx = Math.min(
-      isCompactLandscape ? 19 : isPortrait ? 24 : 30,
-      Math.max(12, Math.round((style.fontSize + fontMeta.opticalSizeBoost) * 1.15)),
-    );
-    const headerPx = Math.max(
-      12,
-      Math.min(isPortrait ? 15 : 20, Math.round(finalePx * 0.68)),
-    );
-    const signaturePx = Math.max(15, Math.min(24, Math.round(finalePx * 0.8)));
 
     letterKicker.style.fontSize = `${headerPx}px`;
     letterMsg.style.fontFamily = fontMeta.cssFamily;
@@ -1677,15 +1704,42 @@ function bootGiftLabRecipient(): void {
     const star = normalizedStars[activeIndex] ?? normalizedStars[0];
     if (!star) return;
     const activeDevice = getActiveDevice();
-    const cardLayout = resolveEffectiveCardLayout(payload, activeDevice);
-    const glow = GLOW_COLORS[resolveStarGlowHex(star, payload.globalGlowColor)];
-    const style = resolveEffectiveStarTextStyle(star, activeDevice);
-    const fontMeta = resolveMessageFont(style.fontId);
-
     const w = window.innerWidth;
     const h = window.innerHeight;
     const isPortrait = h > w || w < 540;
     const isCompactLandscape = !isPortrait && h < 520;
+
+    const pres = computeStoryCardPresentation(payload, star, {
+      device: activeDevice,
+      viewportWidth: w,
+      isPortrait,
+      isCompactLandscape,
+      editMode: false,
+    });
+    const {
+      activeStarGlow: glow,
+      cardLayout,
+      textStyle: style,
+      fontMeta,
+      effectiveAlign,
+      effectiveBodyPx: bodyPx,
+      effectiveTitlePx: titlePx,
+      titleLineHeight,
+      textMarginLeftPct: marginLeftPct,
+      illuLeftGrow,
+      illuRightGrow,
+      effectiveIlluPx,
+      spacers,
+      storyCardOffsetY: storyShiftY,
+      storyCardScale: cardScale,
+      storyTextShiftY: textShiftY,
+      starDecor,
+      safeStarDecor,
+      effectiveTextColor,
+      resolvedTextShadow: shadowCss,
+      decorGlowHex: dGlowHex,
+      decorCoreHex: dCoreHex,
+    } = pres;
 
     storyMotionWrap.style.maxWidth = cardLayout.customWidthPx
       ? `min(94vw, ${cardLayout.customWidthPx}px)`
@@ -1703,8 +1757,6 @@ function bootGiftLabRecipient(): void {
     storyMotionWrap.style.minHeight = cardLayout.customHeightPx
       ? `${cardLayout.customHeightPx}px`
       : '';
-    const storyShiftY = Math.round(cardLayout.offsetY * 0.7);
-    const cardScale = cardLayout.scale ?? 1;
     storyMotionWrap.style.translate = storyShiftY !== 0 ? `0 ${storyShiftY}px` : '';
     storyMotionWrap.style.scale = cardScale !== 1 ? String(cardScale) : '';
     storyMotionWrap.style.transformOrigin = 'center center';
@@ -1747,40 +1799,9 @@ function bootGiftLabRecipient(): void {
             : '0';
     }
 
-    const effectiveAlign: Exclude<MessageTextAlign, 'auto'> =
-      style.textAlign === 'auto'
-        ? isMinimalistTheme
-          ? 'left'
-          : isPortrait
-            ? 'center'
-            : 'left'
-        : style.textAlign;
-    const bodyPx = Math.min(
-      style.fontSize + fontMeta.opticalSizeBoost,
-      isCompactLandscape ? 16 : isPortrait ? 20 : 26,
-    );
-    const titlePx = Math.round(
-      Math.min(isCompactLandscape ? 25 : isPortrait ? 31 : 38, bodyPx * 1.48),
-    );
-    const marginLeftPct = computeTextBlockMarginLeftPct(style.widthPct, style.offsetX);
-
-    const illuLayout = resolveEffectiveIllustrationLayout(star, activeDevice);
-    const illuLeftGrow = Number(((illuLayout.offsetX + 100) / 200).toFixed(3));
-    const illuRightGrow = Number((1 - illuLeftGrow).toFixed(3));
     illuLeftSpacer.style.flexGrow = String(illuLeftGrow);
     illuRightSpacer.style.flexGrow = String(illuRightGrow);
 
-    const clampedIlluScale = Math.min(isPortrait ? 1.28 : 1.45, illuLayout.scale);
-    const baseIlluPx = isCompactLandscape
-      ? 80
-      : isPortrait
-        ? w >= 640
-          ? 156
-          : 118
-        : w >= 1024
-          ? 196
-          : 158;
-    const effectiveIlluPx = Math.round(baseIlluPx * clampedIlluScale);
     illuFrame.style.width = `${effectiveIlluPx}px`;
     illuFrame.style.height = `${effectiveIlluPx}px`;
 
@@ -1794,68 +1815,12 @@ function bootGiftLabRecipient(): void {
       illuImg.style.transform = '';
     }
 
-    const illuYShift = illuLayout.offsetY / 100;
-    const textYShift = style.offsetY / 100;
-    const spacerBase = isPortrait || isCompactLandscape ? 0.35 : 0.9;
-    const rawTopOuterGrow = Math.max(
-      0,
-      Math.min(
-        2.0,
-        spacerBase * (1 + illuYShift * 0.85) - Math.max(0, -textYShift) * 0.45,
-      ),
-    );
-    const rawTopInnerGrow = Math.max(
-      0.06,
-      Math.min(
-        2.2,
-        0.14 + Math.max(0, textYShift) * 1.4 + Math.max(0, -illuYShift) * 0.7,
-      ),
-    );
-    const rawBottomInnerGrow = Math.max(
-      0,
-      Math.min(
-        2.4,
-        spacerBase + Math.max(0, -textYShift) * 1.35 - Math.max(0, textYShift) * 0.65,
-      ),
-    );
+    topOuterSpacer.style.flexGrow = String(spacers.topOuterGrow);
+    topInnerSpacer.style.flexGrow = String(spacers.topInnerGrow);
+    bottomInnerSpacer.style.flexGrow = String(spacers.bottomInnerGrow);
 
-    const topOuterGrow = Number(
-      (cardLayout.verticalAlign === 'top'
-        ? rawTopOuterGrow * 0.2
-        : cardLayout.verticalAlign === 'spread'
-          ? rawTopOuterGrow * 0.4
-          : rawTopOuterGrow
-      ).toFixed(3),
-    );
-    const topInnerGrow = Number(
-      (cardLayout.verticalAlign === 'spread'
-        ? rawTopInnerGrow + 0.75
-        : rawTopInnerGrow
-      ).toFixed(3),
-    );
-    const bottomInnerGrow = Number(
-      (cardLayout.verticalAlign === 'top'
-        ? rawBottomInnerGrow + 1.15
-        : cardLayout.verticalAlign === 'spread'
-          ? rawBottomInnerGrow * 0.4
-          : rawBottomInnerGrow
-      ).toFixed(3),
-    );
-
-    topOuterSpacer.style.flexGrow = String(topOuterGrow);
-    topInnerSpacer.style.flexGrow = String(topInnerGrow);
-    bottomInnerSpacer.style.flexGrow = String(bottomInnerGrow);
-
-    const starDecor = resolveEffectiveStarDecor(star, activeDevice);
-    const safeStarDecor = resolveSafeCardDecorPresentation(starDecor, {
-      editMode: false,
-      textLength: (star.message || '').length,
-      compactViewport: isPortrait || isCompactLandscape,
-    });
     storyCardDecor.innerHTML = '';
     if (starDecor.motif !== 'none') {
-      const dGlowHex = cardColors.isLightPaper ? cardColors.accentColor : glow.hex;
-      const dCoreHex = cardColors.isLightPaper ? cardColors.badgeColor : glow.coreHex;
       const decorSvg = createCardDecorSvg(starDecor.motif, dGlowHex, dCoreHex);
       if (decorSvg) storyCardDecor.appendChild(decorSvg);
       storyCardDecor.classList.remove('gl-hidden');
@@ -1867,20 +1832,8 @@ function bootGiftLabRecipient(): void {
       storyCardDecor.classList.add('gl-hidden');
     }
 
-    const rawTextColor =
-      star.textStyle || !cardColors.isLightPaper ? style.color : cardColors.textColor;
-    const effectiveTextColor = resolveContrastSafeCardTextColor(
-      rawTextColor,
-      payload,
-      cardColors,
-    );
-    const effectiveShadowMode =
-      cardColors.isLightPaper && style.shadow !== 'glow' ? 'none' : style.shadow;
-    const shadowCss = resolveTextShadowCss(effectiveShadowMode, glow.hex);
-
     storyBlock.style.width = `${style.widthPct}%`;
     storyBlock.style.marginLeft = `${marginLeftPct}%`;
-    const textShiftY = Math.round(style.offsetY * 0.32);
     storyBlock.style.translate = textShiftY !== 0 ? `0 ${textShiftY}px` : '';
     storyBlock.style.textAlign = effectiveAlign;
     storyBlock.style.fontFamily = fontMeta.cssFamily;
@@ -1918,9 +1871,7 @@ function bootGiftLabRecipient(): void {
     storyTitle.style.fontFamily = fontMeta.cssFamily;
     storyTitle.style.fontSize = `${titlePx}px`;
     storyTitle.style.fontWeight = '600';
-    storyTitle.style.lineHeight = String(
-      Math.min(1.4, Math.max(1.12, Number((style.lineHeight * 0.78).toFixed(2)))),
-    );
+    storyTitle.style.lineHeight = String(titleLineHeight);
     storyTitle.style.color = effectiveTextColor;
     storyTitle.style.textShadow = shadowCss;
 

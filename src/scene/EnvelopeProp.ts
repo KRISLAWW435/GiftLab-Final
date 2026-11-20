@@ -1,6 +1,317 @@
 import * as THREE from 'three';
-import type { EnvelopeSettings } from '../types/project';
-import type { CosmicPaletteConfig, GlowColorConfig } from './paletteConfig';
+import type {
+  EnvelopeMotifId,
+  EnvelopeSettings,
+  EnvelopeShapeId,
+} from '../types/project';
+import {
+  resolveEnvelopeGlowFactors,
+  resolveEnvelopeMotif,
+  resolveEnvelopePaletteColors,
+  resolveEnvelopeShape,
+  resolveSealPaletteColors,
+  type CosmicPaletteConfig,
+  type GlowColorConfig,
+  type ResolvedEnvelopeGlowFactors,
+} from './paletteConfig';
+
+interface EnvelopeGeometrySet {
+  baseGeo: THREE.ExtrudeGeometry;
+  pocketGeo: THREE.ExtrudeGeometry;
+  flapGeo: THREE.ExtrudeGeometry;
+  bodyOutlineGeo: THREE.BufferGeometry;
+  pocketOutlineGeo: THREE.BufferGeometry;
+  flapOutlineGeo: THREE.BufferGeometry;
+  sealRestingY: number;
+}
+
+function buildRoundedRectShape(w: number, h: number, r: number): THREE.Shape {
+  const shape = new THREE.Shape();
+  shape.moveTo(-w + r, -h);
+  shape.lineTo(w - r, -h);
+  shape.quadraticCurveTo(w, -h, w, -h + r);
+  shape.lineTo(w, h - r);
+  shape.quadraticCurveTo(w, h, w - r, h);
+  shape.lineTo(-w + r, h);
+  shape.quadraticCurveTo(-w, h, -w, h - r);
+  shape.lineTo(-w, -h + r);
+  shape.quadraticCurveTo(-w, -h, -w + r, -h);
+  return shape;
+}
+
+function buildEnvelopeGeometrySet(shapeId: EnvelopeShapeId): EnvelopeGeometrySet {
+  const w = 1.55;
+  const h = 1.02;
+
+  let bodyShape: THREE.Shape;
+  let pocketShape: THREE.Shape;
+  let flapShape: THREE.Shape;
+  let sealRestingY = -0.14;
+
+  if (shapeId === 'rounded') {
+    // Soft pill-rounded silhouette with graceful curved arch flap
+    bodyShape = buildRoundedRectShape(w, h, 0.24);
+
+    pocketShape = new THREE.Shape();
+    pocketShape.moveTo(-1.44, -0.96);
+    pocketShape.lineTo(1.44, -0.96);
+    pocketShape.lineTo(1.44, 0.22);
+    pocketShape.quadraticCurveTo(0.7, -0.08, 0, -0.18);
+    pocketShape.quadraticCurveTo(-0.7, -0.08, -1.44, 0.22);
+    pocketShape.closePath();
+
+    flapShape = new THREE.Shape();
+    flapShape.moveTo(-1.46, 0);
+    flapShape.lineTo(1.46, 0);
+    flapShape.bezierCurveTo(1.22, -0.78, 0.52, -1.18, 0, -1.18);
+    flapShape.bezierCurveTo(-0.52, -1.18, -1.22, -0.78, -1.46, 0);
+    flapShape.closePath();
+
+    sealRestingY = -0.12;
+  } else {
+    // 'classic'
+    bodyShape = buildRoundedRectShape(w, h, 0.08);
+
+    pocketShape = new THREE.Shape();
+    pocketShape.moveTo(-1.52, -0.98);
+    pocketShape.lineTo(1.52, -0.98);
+    pocketShape.lineTo(1.52, 0.32);
+    pocketShape.lineTo(0, -0.22);
+    pocketShape.lineTo(-1.52, 0.32);
+    pocketShape.closePath();
+
+    flapShape = new THREE.Shape();
+    flapShape.moveTo(-1.52, 0);
+    flapShape.lineTo(1.52, 0);
+    flapShape.lineTo(0.14, -1.12);
+    flapShape.quadraticCurveTo(0, -1.24, -0.14, -1.12);
+    flapShape.closePath();
+
+    sealRestingY = -0.14;
+  }
+
+  const baseGeo = new THREE.ExtrudeGeometry(bodyShape, {
+    depth: 0.07,
+    bevelEnabled: true,
+    bevelThickness: 0.025,
+    bevelSize: 0.02,
+    bevelSegments: 2,
+  });
+  baseGeo.center();
+
+  const pocketGeo = new THREE.ExtrudeGeometry(pocketShape, {
+    depth: 0.03,
+    bevelEnabled: true,
+    bevelThickness: 0.015,
+    bevelSize: 0.012,
+    bevelSegments: 2,
+  });
+
+  const flapGeo = new THREE.ExtrudeGeometry(flapShape, {
+    depth: 0.025,
+    bevelEnabled: true,
+    bevelThickness: 0.014,
+    bevelSize: 0.012,
+    bevelSegments: 2,
+  });
+
+  const bodyOutlineGeo = new THREE.BufferGeometry().setFromPoints(
+    bodyShape.getSpacedPoints(56).map((p) => new THREE.Vector3(p.x, p.y, 0)),
+  );
+  const pocketOutlineGeo = new THREE.BufferGeometry().setFromPoints(
+    pocketShape.getSpacedPoints(40).map((p) => new THREE.Vector3(p.x, p.y, 0)),
+  );
+  const flapOutlineGeo = new THREE.BufferGeometry().setFromPoints(
+    flapShape.getSpacedPoints(40).map((p) => new THREE.Vector3(p.x, p.y, 0)),
+  );
+
+  return {
+    baseGeo,
+    pocketGeo,
+    flapGeo,
+    bodyOutlineGeo,
+    pocketOutlineGeo,
+    flapOutlineGeo,
+    sealRestingY,
+  };
+}
+
+function drawEnvelopeMotifTexture(
+  motif: EnvelopeMotifId,
+  inkHex: string,
+  isLightBody: boolean,
+): THREE.CanvasTexture | null {
+  if (motif === 'none' || typeof document === 'undefined') return null;
+  const canvas = document.createElement('canvas');
+  canvas.width = 512;
+  canvas.height = 512;
+  const ctx = canvas.getContext('2d');
+  if (!ctx) return null;
+
+  ctx.clearRect(0, 0, 512, 512);
+  ctx.scale(2, 2);
+
+  // Clean circular stamp-seal badge on the pocket corner
+  ctx.save();
+  ctx.beginPath();
+  ctx.arc(128, 128, 102, 0, Math.PI * 2);
+  ctx.fillStyle = isLightBody ? 'rgba(255, 255, 255, 0.34)' : 'rgba(255, 255, 255, 0.12)';
+  ctx.fill();
+  ctx.lineWidth = 4;
+  ctx.setLineDash([10, 8]);
+  ctx.strokeStyle = inkHex;
+  ctx.globalAlpha = 0.68;
+  ctx.stroke();
+  ctx.restore();
+
+  ctx.save();
+  ctx.strokeStyle = inkHex;
+  ctx.fillStyle = inkHex;
+  ctx.lineCap = 'round';
+  ctx.lineJoin = 'round';
+
+  if (motif === 'heart') {
+    ctx.beginPath();
+    ctx.moveTo(128, 184);
+    ctx.bezierCurveTo(64, 144, 58, 86, 94, 72);
+    ctx.bezierCurveTo(114, 64, 126, 80, 128, 92);
+    ctx.bezierCurveTo(130, 80, 142, 64, 162, 72);
+    ctx.bezierCurveTo(198, 86, 192, 144, 128, 184);
+    ctx.closePath();
+    ctx.globalAlpha = 0.88;
+    ctx.fill();
+
+    // Small accent sparkle inside heart
+    ctx.fillStyle = isLightBody ? '#FFFFFF' : '#1E143B';
+    ctx.globalAlpha = 0.8;
+    ctx.beginPath();
+    ctx.arc(106, 104, 7, 0, Math.PI * 2);
+    ctx.fill();
+  } else if (motif === 'stars') {
+    const pts: Array<[number, number, number]> = [
+      [82, 152, 11],
+      [128, 94, 18],
+      [174, 136, 13],
+    ];
+    ctx.globalAlpha = 0.72;
+    ctx.lineWidth = 4;
+    ctx.setLineDash([7, 7]);
+    ctx.beginPath();
+    ctx.moveTo(pts[0][0], pts[0][1]);
+    ctx.lineTo(pts[1][0], pts[1][1]);
+    ctx.lineTo(pts[2][0], pts[2][1]);
+    ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.globalAlpha = 0.95;
+    for (const [cx, cy, r] of pts) {
+      ctx.beginPath();
+      for (let i = 0; i < 8; i++) {
+        const a = (i * Math.PI) / 4 - Math.PI / 2;
+        const rad = i % 2 === 0 ? r : r * 0.42;
+        const x = cx + Math.cos(a) * rad;
+        const y = cy + Math.sin(a) * rad;
+        if (i === 0) ctx.moveTo(x, y);
+        else ctx.lineTo(x, y);
+      }
+      ctx.closePath();
+      ctx.fill();
+    }
+  } else if (motif === 'moon') {
+    ctx.globalAlpha = 1;
+    ctx.beginPath();
+    ctx.moveTo(148, 66);
+    ctx.bezierCurveTo(78, 70, 72, 174, 158, 184);
+    ctx.bezierCurveTo(114, 168, 108, 94, 148, 66);
+    ctx.closePath();
+    ctx.fill();
+
+    ctx.lineWidth = 2.5;
+    ctx.strokeStyle = isLightBody
+      ? 'rgba(255, 255, 255, 0.45)'
+      : 'rgba(15, 10, 30, 0.35)';
+    ctx.stroke();
+
+    // Two companion 4-point sparkles tucked cleanly in the crescent arc
+    const drawMiniStar = (cx: number, cy: number, r: number) => {
+      ctx.beginPath();
+      for (let i = 0; i < 8; i++) {
+        const a = (i * Math.PI) / 4 - Math.PI / 2;
+        const rad = i % 2 === 0 ? r : r * 0.38;
+        const x = cx + Math.cos(a) * rad;
+        const y = cy + Math.sin(a) * rad;
+        if (i === 0) ctx.moveTo(x, y);
+        else ctx.lineTo(x, y);
+      }
+      ctx.closePath();
+      ctx.fillStyle = inkHex;
+      ctx.fill();
+    };
+    drawMiniStar(166, 98, 14);
+    drawMiniStar(174, 140, 9);
+  } else if (motif === 'flower') {
+    ctx.globalAlpha = 0.9;
+    for (let i = 0; i < 5; i++) {
+      const a = (i * Math.PI * 2) / 5 - Math.PI / 2;
+      const px = 128 + Math.cos(a) * 34;
+      const py = 128 + Math.sin(a) * 34;
+      ctx.beginPath();
+      ctx.ellipse(px, py, 20, 30, a, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    ctx.fillStyle = isLightBody ? '#FFFBEB' : '#1E143B';
+    ctx.beginPath();
+    ctx.arc(128, 128, 15, 0, Math.PI * 2);
+    ctx.fill();
+  } else if (motif === 'butterfly') {
+    ctx.globalAlpha = 0.9;
+    for (const dir of [-1, 1]) {
+      ctx.beginPath();
+      ctx.moveTo(128, 118);
+      ctx.bezierCurveTo(
+        128 + dir * 24,
+        64,
+        128 + dir * 74,
+        74,
+        128 + dir * 58,
+        122,
+      );
+      ctx.bezierCurveTo(
+        128 + dir * 48,
+        134,
+        128 + dir * 22,
+        130,
+        128,
+        128,
+      );
+      ctx.fill();
+
+      ctx.beginPath();
+      ctx.moveTo(128, 130);
+      ctx.bezierCurveTo(
+        128 + dir * 42,
+        132,
+        128 + dir * 58,
+        166,
+        128 + dir * 28,
+        180,
+      );
+      ctx.bezierCurveTo(128 + dir * 12, 184, 128 + dir * 6, 158, 128, 144);
+      ctx.fill();
+    }
+    ctx.lineWidth = 7;
+    ctx.beginPath();
+    ctx.moveTo(128, 98);
+    ctx.lineTo(128, 166);
+    ctx.stroke();
+  }
+  ctx.restore();
+
+  const tex = new THREE.CanvasTexture(canvas);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  tex.anisotropy = 4;
+  tex.needsUpdate = true;
+  return tex;
+}
 
 export class EnvelopeProp {
   public readonly group = new THREE.Group();
@@ -12,6 +323,10 @@ export class EnvelopeProp {
   private baseMesh: THREE.Mesh;
   private pocketMesh: THREE.Mesh;
   private flapMesh: THREE.Mesh;
+  private bodyOutline: THREE.Line;
+  private pocketOutline: THREE.Line;
+  private flapOutline: THREE.Line;
+  private motifMesh: THREE.Mesh;
   private innerGlowSprite: THREE.Sprite;
   private sealDiscMesh: THREE.Mesh;
   private sealRimMesh: THREE.Mesh;
@@ -25,16 +340,32 @@ export class EnvelopeProp {
   private burstOrigins: Float32Array;
   private burstCount = 130;
 
-  private baseGeo: THREE.ExtrudeGeometry;
-  private pocketGeo: THREE.ExtrudeGeometry;
-  private flapGeo: THREE.ExtrudeGeometry;
+  private currentShape: EnvelopeShapeId;
+  private currentMotif: EnvelopeMotifId = 'none';
+  private currentMotifInk = '';
+  private currentMotifIsLight = false;
+  private sealRestingY = -0.14;
+
+  private baseGeo!: THREE.ExtrudeGeometry;
+  private pocketGeo!: THREE.ExtrudeGeometry;
+  private flapGeo!: THREE.ExtrudeGeometry;
+  private bodyOutlineGeo!: THREE.BufferGeometry;
+  private pocketOutlineGeo!: THREE.BufferGeometry;
+  private flapOutlineGeo!: THREE.BufferGeometry;
+  private motifGeo: THREE.PlaneGeometry;
+  private motifTex: THREE.CanvasTexture | null = null;
+
   private sealDiscGeo: THREE.CylinderGeometry;
   private sealRimGeo: THREE.TorusGeometry;
   private sealStarGeo: THREE.ExtrudeGeometry;
 
   private bodyMat: THREE.MeshPhysicalMaterial;
-  private trimMat: THREE.MeshStandardMaterial;
+  private pocketMat: THREE.MeshStandardMaterial;
+  private flapMat: THREE.MeshStandardMaterial;
+  private seamMat: THREE.LineBasicMaterial;
+  private motifMat: THREE.MeshBasicMaterial;
   private goldMat: THREE.MeshStandardMaterial;
+  private sealRimMat: THREE.MeshStandardMaterial;
   private sealStarMat: THREE.MeshStandardMaterial;
   private sealHaloMat: THREE.SpriteMaterial;
   private innerGlowMat: THREE.SpriteMaterial;
@@ -44,6 +375,7 @@ export class EnvelopeProp {
   private isHovered = false;
   private sealedScale = 1;
   private sealedOffsetY = 0;
+  private glowFactors!: ResolvedEnvelopeGlowFactors;
 
   constructor(
     palette: CosmicPaletteConfig,
@@ -51,72 +383,79 @@ export class EnvelopeProp {
     glowTex: THREE.Texture,
     envelopeSettings?: EnvelopeSettings,
   ) {
+    this.currentShape = resolveEnvelopeShape(envelopeSettings);
+    const geomSet = buildEnvelopeGeometrySet(this.currentShape);
+    this.baseGeo = geomSet.baseGeo;
+    this.pocketGeo = geomSet.pocketGeo;
+    this.flapGeo = geomSet.flapGeo;
+    this.bodyOutlineGeo = geomSet.bodyOutlineGeo;
+    this.pocketOutlineGeo = geomSet.pocketOutlineGeo;
+    this.flapOutlineGeo = geomSet.flapOutlineGeo;
+    this.sealRestingY = geomSet.sealRestingY;
+
+    const envColors = resolveEnvelopePaletteColors(
+      envelopeSettings?.envelopeColor,
+      palette,
+    );
+    const sealColors = resolveSealPaletteColors(
+      envelopeSettings?.sealColor,
+      glow,
+    );
+    this.glowFactors = resolveEnvelopeGlowFactors(
+      envelopeSettings?.glowIntensity,
+      envColors,
+      sealColors,
+    );
+
     // 1. Primary beveled envelope body
-    const bodyShape = new THREE.Shape();
-    const w = 1.55;
-    const h = 1.02;
-    const r = 0.08;
-    bodyShape.moveTo(-w + r, -h);
-    bodyShape.lineTo(w - r, -h);
-    bodyShape.quadraticCurveTo(w, -h, w, -h + r);
-    bodyShape.lineTo(w, h - r);
-    bodyShape.quadraticCurveTo(w, h, w - r, h);
-    bodyShape.lineTo(-w + r, h);
-    bodyShape.quadraticCurveTo(-w, h, -w, h - r);
-    bodyShape.lineTo(-w, -h + r);
-    bodyShape.quadraticCurveTo(-w, -h, -w + r, -h);
-
-    this.baseGeo = new THREE.ExtrudeGeometry(bodyShape, {
-      depth: 0.07,
-      bevelEnabled: true,
-      bevelThickness: 0.025,
-      bevelSize: 0.02,
-      bevelSegments: 2,
-    });
-    this.baseGeo.center();
-
     this.bodyMat = new THREE.MeshPhysicalMaterial({
-      color: palette.midColor,
-      emissive: palette.nebulaPrimary,
-      emissiveIntensity: 0.16,
-      roughness: 0.62,
-      metalness: 0.12,
-      clearcoat: 0.35,
-      clearcoatRoughness: 0.35,
-      transparent: true,
+      color: new THREE.Color(envColors.bodyHex).multiplyScalar(
+        this.glowFactors.albedoScale,
+      ),
+      emissive: envColors.emissiveHex,
+      emissiveIntensity: this.glowFactors.bodyEmissiveIntensity,
+      roughness: envColors.isLightBody ? 0.9 : 0.62,
+      metalness: envColors.isLightBody ? 0.01 : 0.08,
+      clearcoat: this.glowFactors.bodyClearcoat,
+      clearcoatRoughness: 0.72,
+      envMapIntensity: this.glowFactors.bodyEnvMapIntensity,
+      transparent: false,
       opacity: 1,
     });
     this.baseMesh = new THREE.Mesh(this.baseGeo, this.bodyMat);
     this.bodyGroup.add(this.baseMesh);
 
-    // 2. Front lower folded pocket V-trim
-    const pocketShape = new THREE.Shape();
-    pocketShape.moveTo(-1.52, -0.98);
-    pocketShape.lineTo(1.52, -0.98);
-    pocketShape.lineTo(1.52, 0.32);
-    pocketShape.lineTo(0, -0.22);
-    pocketShape.lineTo(-1.52, 0.32);
-    pocketShape.closePath();
-
-    this.pocketGeo = new THREE.ExtrudeGeometry(pocketShape, {
-      depth: 0.03,
-      bevelEnabled: true,
-      bevelThickness: 0.015,
-      bevelSize: 0.012,
-      bevelSegments: 2,
-    });
-    this.trimMat = new THREE.MeshStandardMaterial({
-      color: palette.deepColor,
-      emissive: palette.nebulaSecondary,
-      emissiveIntensity: 0.2,
-      roughness: 0.48,
-      metalness: 0.28,
-      transparent: true,
+    // 2. Front lower folded pocket trim
+    this.pocketMat = new THREE.MeshStandardMaterial({
+      color: new THREE.Color(envColors.pocketHex).multiplyScalar(
+        this.glowFactors.albedoScale,
+      ),
+      emissive: envColors.emissiveHex,
+      emissiveIntensity: this.glowFactors.pocketEmissiveIntensity,
+      roughness: envColors.isLightBody ? 0.88 : 0.58,
+      metalness: envColors.isLightBody ? 0.01 : 0.1,
+      envMapIntensity: this.glowFactors.pocketEnvMapIntensity,
+      transparent: false,
       opacity: 1,
     });
-    this.pocketMesh = new THREE.Mesh(this.pocketGeo, this.trimMat);
+    this.pocketMesh = new THREE.Mesh(this.pocketGeo, this.pocketMat);
     this.pocketMesh.position.z = 0.05;
     this.bodyGroup.add(this.pocketMesh);
+
+    // Crisp rim/fold outlines for high legibility against any cosmic background
+    this.seamMat = new THREE.LineBasicMaterial({
+      color: envColors.borderHex,
+      transparent: true,
+      opacity: 0.72,
+    });
+    this.bodyOutline = new THREE.Line(this.bodyOutlineGeo, this.seamMat);
+    this.bodyOutline.position.z = 0.032;
+    this.bodyOutline.scale.set(1.012, 1.015, 1);
+    this.bodyGroup.add(this.bodyOutline);
+
+    this.pocketOutline = new THREE.Line(this.pocketOutlineGeo, this.seamMat);
+    this.pocketOutline.position.z = 0.098;
+    this.bodyGroup.add(this.pocketOutline);
 
     // 3. Inner celestial light glow peeking from inside the envelope
     this.innerGlowMat = new THREE.SpriteMaterial({
@@ -133,50 +472,92 @@ export class EnvelopeProp {
     this.bodyGroup.add(this.innerGlowSprite);
 
     // 4. Articulated top flap pivoted along the top edge (y = +0.98)
-    const flapShape = new THREE.Shape();
-    flapShape.moveTo(-1.52, 0);
-    flapShape.lineTo(1.52, 0);
-    flapShape.lineTo(0.14, -1.12);
-    flapShape.quadraticCurveTo(0, -1.24, -0.14, -1.12);
-    flapShape.closePath();
-
-    this.flapGeo = new THREE.ExtrudeGeometry(flapShape, {
-      depth: 0.025,
-      bevelEnabled: true,
-      bevelThickness: 0.014,
-      bevelSize: 0.012,
-      bevelSegments: 2,
-    });
-    this.flapMesh = new THREE.Mesh(this.flapGeo, this.trimMat);
-    this.flapPivot.position.set(0, 0.98, 0.085);
-    this.flapPivot.add(this.flapMesh);
-    this.bodyGroup.add(this.flapPivot);
-
-    // 5. Star wax-gold seal on flap tip
-    this.goldMat = new THREE.MeshStandardMaterial({
-      color: '#fde68a',
-      emissive: glow.haloHex,
-      emissiveIntensity: 0.35,
-      metalness: 0.92,
-      roughness: 0.18,
-      transparent: true,
+    this.flapMat = new THREE.MeshStandardMaterial({
+      color: new THREE.Color(envColors.flapHex).multiplyScalar(
+        this.glowFactors.albedoScale,
+      ),
+      emissive: envColors.emissiveHex,
+      emissiveIntensity: this.glowFactors.flapEmissiveIntensity,
+      roughness: envColors.isLightBody ? 0.88 : 0.54,
+      metalness: envColors.isLightBody ? 0.01 : 0.12,
+      envMapIntensity: this.glowFactors.flapEnvMapIntensity,
+      transparent: false,
       opacity: 1,
     });
-    this.sealDiscGeo = new THREE.CylinderGeometry(0.32, 0.34, 0.06, 28);
+    this.flapMesh = new THREE.Mesh(this.flapGeo, this.flapMat);
+    this.flapPivot.position.set(0, 0.98, 0.088);
+    this.flapPivot.add(this.flapMesh);
+
+    this.flapOutline = new THREE.Line(this.flapOutlineGeo, this.seamMat);
+    this.flapOutline.position.z = 0.044;
+    this.flapPivot.add(this.flapOutline);
+    this.bodyGroup.add(this.flapPivot);
+
+    // 4b. Optional small picture/motif badge in lower-right pocket corner
+    this.motifGeo = new THREE.PlaneGeometry(0.5, 0.5);
+    this.motifMat = new THREE.MeshBasicMaterial({
+      transparent: true,
+      opacity: 1,
+      depthWrite: false,
+      polygonOffset: true,
+      polygonOffsetFactor: -4,
+      polygonOffsetUnits: -4,
+    });
+    this.motifMesh = new THREE.Mesh(this.motifGeo, this.motifMat);
+    this.motifMesh.position.set(0.94, -0.5, 0.122);
+    this.motifMesh.rotation.z = -0.07;
+    this.motifMesh.renderOrder = 2;
+    this.motifMesh.visible = false;
+    this.bodyGroup.add(this.motifMesh);
+
+    // 5. Star wax-gold seal on flap tip (halo strictly behind disc, crisp contrasting rim & star)
+    this.sealHaloMat = new THREE.SpriteMaterial({
+      map: glowTex,
+      color: sealColors.haloHex,
+      transparent: true,
+      opacity: this.glowFactors.sealHaloOpacityBase,
+      blending: THREE.AdditiveBlending,
+      depthWrite: false,
+    });
+    this.sealHaloSprite = new THREE.Sprite(this.sealHaloMat);
+    this.sealHaloSprite.position.z = -0.025;
+    this.sealHaloSprite.scale.set(1.38, 1.38, 1);
+    this.sealHaloSprite.visible = this.glowFactors.sealHaloHoverOpacity > 0.001;
+    this.sealGroup.add(this.sealHaloSprite);
+
+    this.goldMat = new THREE.MeshStandardMaterial({
+      color: sealColors.discHex,
+      emissive: sealColors.discHex,
+      emissiveIntensity: this.glowFactors.sealDiscEmissive,
+      metalness: 0.38,
+      roughness: 0.34,
+      transparent: false,
+      opacity: 1,
+    });
+    this.sealDiscGeo = new THREE.CylinderGeometry(0.32, 0.34, 0.056, 32);
     this.sealDiscMesh = new THREE.Mesh(this.sealDiscGeo, this.goldMat);
     this.sealDiscMesh.rotation.x = Math.PI / 2;
     this.sealGroup.add(this.sealDiscMesh);
 
-    this.sealRimGeo = new THREE.TorusGeometry(0.33, 0.024, 10, 32);
-    this.sealRimMesh = new THREE.Mesh(this.sealRimGeo, this.goldMat);
-    this.sealRimMesh.position.z = 0.025;
+    this.sealRimMat = new THREE.MeshStandardMaterial({
+      color: sealColors.rimHex,
+      emissive: sealColors.rimHex,
+      emissiveIntensity: this.glowFactors.sealRimEmissive,
+      metalness: 0.84,
+      roughness: 0.2,
+      transparent: false,
+      opacity: 1,
+    });
+    this.sealRimGeo = new THREE.TorusGeometry(0.328, 0.025, 12, 36);
+    this.sealRimMesh = new THREE.Mesh(this.sealRimGeo, this.sealRimMat);
+    this.sealRimMesh.position.z = 0.028;
     this.sealGroup.add(this.sealRimMesh);
 
     // 6. Raised 8-point radiant star emblem on the seal
     const starShape = new THREE.Shape();
     for (let i = 0; i < 8; i++) {
       const a = (i / 8) * Math.PI * 2 - Math.PI / 2;
-      const rad = i % 2 === 0 ? 0.24 : 0.095;
+      const rad = i % 2 === 0 ? 0.23 : 0.092;
       const sx = Math.cos(a) * rad;
       const sy = Math.sin(a) * rad;
       if (i === 0) starShape.moveTo(sx, sy);
@@ -185,39 +566,26 @@ export class EnvelopeProp {
     starShape.closePath();
 
     this.sealStarGeo = new THREE.ExtrudeGeometry(starShape, {
-      depth: 0.03,
+      depth: 0.032,
       bevelEnabled: true,
-      bevelThickness: 0.012,
-      bevelSize: 0.01,
+      bevelThickness: 0.01,
+      bevelSize: 0.008,
       bevelSegments: 2,
     });
     this.sealStarMat = new THREE.MeshStandardMaterial({
-      color: glow.coreHex,
-      emissive: glow.hex,
-      emissiveIntensity: 1.25,
-      metalness: 0.45,
-      roughness: 0.14,
-      transparent: true,
+      color: sealColors.starHex,
+      emissive: sealColors.starEmissiveHex,
+      emissiveIntensity: this.glowFactors.sealStarEmissive,
+      metalness: 0.35,
+      roughness: 0.18,
+      transparent: false,
       opacity: 1,
     });
     this.sealStarMesh = new THREE.Mesh(this.sealStarGeo, this.sealStarMat);
-    this.sealStarMesh.position.z = 0.028;
+    this.sealStarMesh.position.z = 0.032;
     this.sealGroup.add(this.sealStarMesh);
 
-    this.sealHaloMat = new THREE.SpriteMaterial({
-      map: glowTex,
-      color: glow.hex,
-      transparent: true,
-      opacity: 0.78,
-      blending: THREE.AdditiveBlending,
-      depthWrite: false,
-    });
-    this.sealHaloSprite = new THREE.Sprite(this.sealHaloMat);
-    this.sealHaloSprite.position.z = 0.06;
-    this.sealHaloSprite.scale.set(1.55, 1.55, 1);
-    this.sealGroup.add(this.sealHaloSprite);
-
-    this.sealGroup.position.set(0, -0.14, 0.16);
+    this.sealGroup.position.set(0, this.sealRestingY, 0.175);
     this.bodyGroup.add(this.sealGroup);
 
     this.group.add(this.bodyGroup);
@@ -249,7 +617,7 @@ export class EnvelopeProp {
     this.burstGeo = new THREE.BufferGeometry();
     this.burstGeo.setAttribute('position', new THREE.BufferAttribute(burstPos, 3));
     this.burstMat = new THREE.PointsMaterial({
-      color: glow.hex,
+      color: sealColors.haloHex,
       size: 0.28,
       map: glowTex,
       transparent: true,
@@ -262,8 +630,88 @@ export class EnvelopeProp {
     this.burstPoints.visible = false;
     this.burstPoints.frustumCulled = false;
     this.group.add(this.burstPoints);
-    if (envelopeSettings) {
-      this.setPaletteAndGlow(palette, glow, envelopeSettings);
+
+    this.syncMotifTexture(
+      resolveEnvelopeMotif(envelopeSettings),
+      envColors.motifInkHex,
+      envColors.isLightBody,
+    );
+  }
+
+  private applyShapeGeometry(nextShape: EnvelopeShapeId): void {
+    if (nextShape === this.currentShape) return;
+    this.currentShape = nextShape;
+    const oldBase = this.baseGeo;
+    const oldPocket = this.pocketGeo;
+    const oldFlap = this.flapGeo;
+    const oldBodyOut = this.bodyOutlineGeo;
+    const oldPocketOut = this.pocketOutlineGeo;
+    const oldFlapOut = this.flapOutlineGeo;
+
+    const geomSet = buildEnvelopeGeometrySet(nextShape);
+    this.baseGeo = geomSet.baseGeo;
+    this.pocketGeo = geomSet.pocketGeo;
+    this.flapGeo = geomSet.flapGeo;
+    this.bodyOutlineGeo = geomSet.bodyOutlineGeo;
+    this.pocketOutlineGeo = geomSet.pocketOutlineGeo;
+    this.flapOutlineGeo = geomSet.flapOutlineGeo;
+    this.sealRestingY = geomSet.sealRestingY;
+
+    this.baseMesh.geometry = this.baseGeo;
+    this.pocketMesh.geometry = this.pocketGeo;
+    this.flapMesh.geometry = this.flapGeo;
+    this.bodyOutline.geometry = this.bodyOutlineGeo;
+    this.pocketOutline.geometry = this.pocketOutlineGeo;
+    this.flapOutline.geometry = this.flapOutlineGeo;
+
+    if (this.state === 'sealed') {
+      this.sealGroup.position.y = this.sealRestingY;
+    }
+
+    oldBase.dispose();
+    oldPocket.dispose();
+    oldFlap.dispose();
+    oldBodyOut.dispose();
+    oldPocketOut.dispose();
+    oldFlapOut.dispose();
+  }
+
+  private syncMotifTexture(
+    motif: EnvelopeMotifId,
+    inkHex: string,
+    isLightBody: boolean,
+  ): void {
+    if (
+      motif === this.currentMotif &&
+      inkHex === this.currentMotifInk &&
+      isLightBody === this.currentMotifIsLight
+    ) {
+      return;
+    }
+    this.currentMotif = motif;
+    this.currentMotifInk = inkHex;
+    this.currentMotifIsLight = isLightBody;
+
+    if (this.motifTex) {
+      this.motifTex.dispose();
+      this.motifTex = null;
+    }
+
+    if (motif === 'none') {
+      this.motifMat.map = null;
+      this.motifMat.needsUpdate = true;
+      this.motifMesh.visible = false;
+      return;
+    }
+
+    const nextTex = drawEnvelopeMotifTexture(motif, inkHex, isLightBody);
+    if (nextTex) {
+      this.motifTex = nextTex;
+      this.motifMat.map = nextTex;
+      this.motifMat.needsUpdate = true;
+      this.motifMesh.visible = true;
+    } else {
+      this.motifMesh.visible = false;
     }
   }
 
@@ -272,42 +720,79 @@ export class EnvelopeProp {
     glow: GlowColorConfig,
     envelopeSettings?: EnvelopeSettings,
   ): void {
-    const customEnv = envelopeSettings?.envelopeColor;
-    if (customEnv) {
-      const envBase = new THREE.Color(customEnv);
-      const envTrim = envBase.clone().multiplyScalar(0.76);
-      const envGlow = envBase.clone().multiplyScalar(0.32);
-      this.bodyMat.color.copy(envBase);
-      this.bodyMat.emissive.copy(envGlow);
-      this.trimMat.color.copy(envTrim);
-      this.trimMat.emissive.copy(envGlow);
-    } else {
-      this.bodyMat.color.set(palette.midColor);
-      this.bodyMat.emissive.set(palette.nebulaPrimary);
-      this.trimMat.color.set(palette.deepColor);
-      this.trimMat.emissive.set(palette.nebulaSecondary);
-    }
+    const nextShape = resolveEnvelopeShape(envelopeSettings);
+    this.applyShapeGeometry(nextShape);
 
-    const customSeal = envelopeSettings?.sealColor;
-    if (customSeal) {
-      const sealBase = new THREE.Color(customSeal);
-      const sealCore = sealBase.clone().lerp(new THREE.Color('#ffffff'), 0.42);
-      this.goldMat.color.copy(sealBase);
-      this.goldMat.emissive.copy(sealBase);
-      this.sealStarMat.color.copy(sealCore);
-      this.sealStarMat.emissive.copy(sealBase);
-      this.sealHaloMat.color.copy(sealBase);
-      this.innerGlowMat.color.copy(sealCore);
-      this.burstMat.color.copy(sealBase);
-    } else {
-      this.goldMat.color.set('#fde68a');
-      this.goldMat.emissive.set(glow.haloHex);
-      this.sealStarMat.color.set(glow.coreHex);
-      this.sealStarMat.emissive.set(glow.hex);
-      this.sealHaloMat.color.set(glow.hex);
-      this.innerGlowMat.color.set(glow.coreHex);
-      this.burstMat.color.set(glow.hex);
+    const envColors = resolveEnvelopePaletteColors(
+      envelopeSettings?.envelopeColor,
+      palette,
+    );
+    const sealColors = resolveSealPaletteColors(
+      envelopeSettings?.sealColor,
+      glow,
+    );
+    this.glowFactors = resolveEnvelopeGlowFactors(
+      envelopeSettings?.glowIntensity,
+      envColors,
+      sealColors,
+    );
+
+    const bodyEmissiveTarget =
+      envColors.isLightBody && this.glowFactors.bodyEmissiveIntensity > 0
+        ? '#EDE9FE'
+        : envColors.emissiveHex;
+
+    this.bodyMat.color.set(envColors.bodyHex).multiplyScalar(this.glowFactors.albedoScale);
+    this.bodyMat.emissive.set(bodyEmissiveTarget);
+    this.bodyMat.emissiveIntensity = this.glowFactors.bodyEmissiveIntensity;
+    this.bodyMat.roughness = envColors.isLightBody ? 0.9 : 0.62;
+    this.bodyMat.metalness = envColors.isLightBody ? 0.01 : 0.08;
+    this.bodyMat.clearcoat = this.glowFactors.bodyClearcoat;
+    this.bodyMat.envMapIntensity = this.glowFactors.bodyEnvMapIntensity;
+
+    this.pocketMat.color
+      .set(envColors.pocketHex)
+      .multiplyScalar(this.glowFactors.albedoScale);
+    this.pocketMat.emissive.set(bodyEmissiveTarget);
+    this.pocketMat.emissiveIntensity = this.glowFactors.pocketEmissiveIntensity;
+    this.pocketMat.roughness = envColors.isLightBody ? 0.88 : 0.58;
+    this.pocketMat.metalness = envColors.isLightBody ? 0.01 : 0.1;
+    this.pocketMat.envMapIntensity = this.glowFactors.pocketEnvMapIntensity;
+
+    this.flapMat.color.set(envColors.flapHex).multiplyScalar(this.glowFactors.albedoScale);
+    this.flapMat.emissive.set(bodyEmissiveTarget);
+    this.flapMat.emissiveIntensity = this.glowFactors.flapEmissiveIntensity;
+    this.flapMat.roughness = envColors.isLightBody ? 0.88 : 0.54;
+    this.flapMat.metalness = envColors.isLightBody ? 0.01 : 0.12;
+    this.flapMat.envMapIntensity = this.glowFactors.flapEnvMapIntensity;
+
+    this.seamMat.color.set(envColors.borderHex);
+
+    this.goldMat.color.set(sealColors.discHex);
+    this.goldMat.emissive.set(sealColors.discHex);
+    this.goldMat.emissiveIntensity = this.glowFactors.sealDiscEmissive;
+
+    this.sealRimMat.color.set(sealColors.rimHex);
+    this.sealRimMat.emissive.set(sealColors.rimHex);
+    this.sealRimMat.emissiveIntensity = this.glowFactors.sealRimEmissive;
+
+    this.sealStarMat.color.set(sealColors.starHex);
+    this.sealStarMat.emissive.set(sealColors.starEmissiveHex);
+    this.sealStarMat.emissiveIntensity = this.glowFactors.sealStarEmissive;
+
+    this.sealHaloMat.color.set(sealColors.haloHex);
+    if (this.state === 'sealed') {
+      this.sealHaloMat.opacity = this.glowFactors.sealHaloOpacityBase;
+      this.sealHaloSprite.visible = this.glowFactors.sealHaloHoverOpacity > 0.001;
     }
+    this.innerGlowMat.color.set(glow.coreHex);
+    this.burstMat.color.set(sealColors.haloHex);
+
+    this.syncMotifTexture(
+      resolveEnvelopeMotif(envelopeSettings),
+      envColors.motifInkHex,
+      envColors.isLightBody,
+    );
   }
 
   public setHovered(hovered: boolean): void {
@@ -332,6 +817,25 @@ export class EnvelopeProp {
     return [this.baseMesh, this.pocketMesh, this.flapMesh, this.sealDiscMesh];
   }
 
+  private setSolidMaterialsOpacity(opacity: number): void {
+    const needTransparent = opacity < 0.999;
+    const mats = [
+      this.bodyMat,
+      this.pocketMat,
+      this.flapMat,
+      this.goldMat,
+      this.sealRimMat,
+      this.sealStarMat,
+    ];
+    for (const mat of mats) {
+      if (mat.transparent !== needTransparent) {
+        mat.transparent = needTransparent;
+        mat.needsUpdate = true;
+      }
+      mat.opacity = opacity;
+    }
+  }
+
   public resetSealed(): void {
     this.state = 'sealed';
     this.openProgress = 0;
@@ -342,14 +846,15 @@ export class EnvelopeProp {
     this.bodyGroup.visible = true;
     this.bodyGroup.scale.setScalar(1);
     this.flapPivot.rotation.x = 0;
-    this.sealGroup.position.set(0, -0.14, 0.16);
+    this.sealGroup.position.set(0, this.sealRestingY, 0.175);
     this.sealGroup.scale.setScalar(1);
     this.sealGroup.rotation.z = 0;
-    this.bodyMat.opacity = 1;
-    this.trimMat.opacity = 1;
-    this.goldMat.opacity = 1;
-    this.sealStarMat.opacity = 1;
-    this.sealHaloMat.opacity = 0.78;
+    this.setSolidMaterialsOpacity(1);
+    this.seamMat.opacity = 0.62;
+    this.motifMat.opacity = 1;
+    this.sealStarMat.emissiveIntensity = this.glowFactors.sealStarEmissive;
+    this.sealHaloMat.opacity = this.glowFactors.sealHaloOpacityBase;
+    this.sealHaloSprite.visible = this.glowFactors.sealHaloHoverOpacity > 0.001;
     this.innerGlowMat.opacity = 0;
     this.burstPoints.visible = false;
     this.burstMat.opacity = 0;
@@ -359,6 +864,7 @@ export class EnvelopeProp {
     if (this.state === 'sealed') {
       this.state = 'opening';
       this.openProgress = 0;
+      this.sealHaloSprite.visible = true;
       this.burstPoints.visible = true;
     }
   }
@@ -373,14 +879,14 @@ export class EnvelopeProp {
     this.bodyGroup.visible = true;
     this.bodyGroup.scale.setScalar(1);
     this.flapPivot.rotation.x = 0;
-    this.sealGroup.position.set(0, -0.14, 0.16);
+    this.sealGroup.position.set(0, this.sealRestingY, 0.175);
     this.sealGroup.scale.setScalar(1);
     this.sealGroup.rotation.z = 0;
-    this.bodyMat.opacity = 0;
-    this.trimMat.opacity = 0;
-    this.goldMat.opacity = 0;
-    this.sealStarMat.opacity = 0;
+    this.setSolidMaterialsOpacity(0);
+    this.seamMat.opacity = 0;
+    this.motifMat.opacity = 0;
     this.sealHaloMat.opacity = 0;
+    this.sealHaloSprite.visible = true;
     this.innerGlowMat.opacity = 0;
     this.burstPoints.visible = true;
     this.burstMat.opacity = 0;
@@ -425,17 +931,16 @@ export class EnvelopeProp {
       this.group.scale.setScalar(0.56 * (0.85 + enterEase * 0.15 + handoffFadeP * 0.08));
 
       const baseOpacity = enterEase * (1 - handoffFadeP);
-      this.bodyMat.opacity = baseOpacity;
-      this.trimMat.opacity = baseOpacity;
-      this.goldMat.opacity = baseOpacity;
-      this.sealStarMat.opacity = baseOpacity;
+      this.setSolidMaterialsOpacity(baseOpacity);
+      this.seamMat.opacity = baseOpacity * 0.62;
+      this.motifMat.opacity = baseOpacity;
 
       const sealEase = 1 - Math.pow(1 - sealP, 3);
       this.sealGroup.rotation.z = sealEase * Math.PI * 0.65;
-      this.sealGroup.position.z = 0.16 + sealEase * 0.36;
+      this.sealGroup.position.z = 0.175 + sealEase * 0.36;
       this.sealGroup.scale.setScalar(1 + sealEase * 0.2);
-      this.sealStarMat.emissiveIntensity = 1.25 + sealEase * 2.1;
-      this.sealHaloMat.opacity = Math.max(0, baseOpacity * (0.75 + sealEase * 0.25));
+      this.sealStarMat.emissiveIntensity = 0.65 + sealEase * 1.4;
+      this.sealHaloMat.opacity = Math.max(0, baseOpacity * (0.45 + sealEase * 0.25));
 
       const flapEase = 1 - Math.pow(1 - flapP, 3);
       this.flapPivot.rotation.x = -flapEase * Math.PI * 0.85;
@@ -472,8 +977,11 @@ export class EnvelopeProp {
       this.bodyGroup.scale.setScalar(nextScale);
 
       const pulse = reducedMotion ? 1 : 0.88 + 0.12 * Math.sin(elapsed * 2.5);
-      this.sealHaloMat.opacity = (this.isHovered ? 0.92 : 0.72) * pulse;
-      const hSize = (this.isHovered ? 1.85 : 1.5) * pulse;
+      const targetHaloOpacity = this.isHovered
+        ? this.glowFactors.sealHaloHoverOpacity
+        : this.glowFactors.sealHaloOpacityBase;
+      this.sealHaloMat.opacity = targetHaloOpacity * pulse;
+      const hSize = (this.isHovered ? 1.62 : 1.36) * pulse;
       this.sealHaloSprite.scale.set(hSize, hSize, 1);
       return;
     }
@@ -490,11 +998,11 @@ export class EnvelopeProp {
     // Seal ignition & lift
     const sealEase = 1 - Math.pow(1 - sealP, 3);
     this.sealGroup.rotation.z = sealEase * Math.PI * 0.75;
-    this.sealGroup.position.z = 0.16 + sealEase * 0.42;
+    this.sealGroup.position.z = 0.175 + sealEase * 0.42;
     this.sealGroup.scale.setScalar(1 + sealEase * 0.25);
-    this.sealStarMat.emissiveIntensity = 1.25 + sealEase * 2.4;
-    this.sealHaloMat.opacity = Math.max(0, (0.95 - dissolveP) * (0.75 + sealEase * 0.25));
-    this.sealHaloSprite.scale.setScalar(1.6 + sealEase * 1.4);
+    this.sealStarMat.emissiveIntensity = 0.65 + sealEase * 1.6;
+    this.sealHaloMat.opacity = Math.max(0, (0.68 - dissolveP) * (0.55 + sealEase * 0.25));
+    this.sealHaloSprite.scale.setScalar(1.4 + sealEase * 1.1);
 
     // Flap opening
     const flapEase = 1 - Math.pow(1 - flapP, 3);
@@ -507,9 +1015,11 @@ export class EnvelopeProp {
 
     // Body fade & particle burst
     const bodyFade = 1 - dissolveP;
-    this.bodyMat.opacity = bodyFade;
-    this.trimMat.opacity = bodyFade;
+    this.setSolidMaterialsOpacity(bodyFade);
+    this.seamMat.opacity = bodyFade * 0.62;
+    this.motifMat.opacity = bodyFade;
     this.goldMat.opacity = bodyFade;
+    this.sealRimMat.opacity = bodyFade;
     this.sealStarMat.opacity = bodyFade;
     this.bodyGroup.scale.setScalar(1 + dissolveP * 0.14);
 
@@ -537,14 +1047,26 @@ export class EnvelopeProp {
     this.baseGeo.dispose();
     this.pocketGeo.dispose();
     this.flapGeo.dispose();
+    this.bodyOutlineGeo.dispose();
+    this.pocketOutlineGeo.dispose();
+    this.flapOutlineGeo.dispose();
+    this.motifGeo.dispose();
+    if (this.motifTex) {
+      this.motifTex.dispose();
+      this.motifTex = null;
+    }
     this.sealDiscGeo.dispose();
     this.sealRimGeo.dispose();
     this.sealStarGeo.dispose();
     this.burstGeo.dispose();
 
     this.bodyMat.dispose();
-    this.trimMat.dispose();
+    this.pocketMat.dispose();
+    this.flapMat.dispose();
+    this.seamMat.dispose();
+    this.motifMat.dispose();
     this.goldMat.dispose();
+    this.sealRimMat.dispose();
     this.sealStarMat.dispose();
     this.sealHaloMat.dispose();
     this.innerGlowMat.dispose();

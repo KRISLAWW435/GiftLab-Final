@@ -452,17 +452,209 @@ export function getStarMessageSuggestions(
   return [...primary, shapeFlair];
 }
 
+const FINAL_TONE_MESSAGES: Record<RecipientTone, StarMessageSuggestion[]> = {
+  mom: [
+    {
+      id: 'final_mom_1',
+      tag: 'Сердце вселенной',
+      text: 'Мама, ты — самое яркое солнце в моей вселенной! Спасибо за твою любовь, нежность и поддержку каждый день.',
+    },
+    {
+      id: 'final_mom_2',
+      tag: 'Тепло дома',
+      text: 'Спасибо за уют, добрые советы и объятия, в которых всегда спокойно. Пусть все твои мечты сбываются!',
+    },
+    {
+      id: 'final_mom_3',
+      tag: 'Пожелание',
+      text: 'Желаю тебе крепкого здоровья, как можно больше поводов для улыбки и светлых счастливых дней рядом с близкими!',
+    },
+    {
+      id: 'final_mom_4',
+      tag: 'Благодарность',
+      text: 'Каждая звезда в этом созвездии светится в твою честь — я бесконечно люблю и ценю тебя!',
+    },
+  ],
+  dad: [
+    {
+      id: 'final_dad_1',
+      tag: 'Главная опора',
+      text: 'Спасибо за силу, мудрые советы и надёжное плечо, на которое всегда можно положиться!',
+    },
+    {
+      id: 'final_dad_2',
+      tag: 'Успехи и радость',
+      text: 'Желаю бодрости, ярких идей, новых побед и побольше душевных вечеров в кругу семьи!',
+    },
+    {
+      id: 'final_dad_3',
+      tag: 'Гордость',
+      text: 'Рядом с тобой спокойно и интересно открывать этот мир. Спасибо за всё, чему ты меня научил!',
+    },
+    {
+      id: 'final_dad_4',
+      tag: 'Пожелание',
+      text: 'Пусть каждый новый день приносит отличное настроение, удачу и тепло любимых людей!',
+    },
+  ],
+  friend: [
+    {
+      id: 'final_friend_1',
+      tag: 'Лучшая дружба',
+      text: 'Спасибо, что с тобой можно и посмеяться от души, и разделить любое приключение! Наше созвездие всегда будет светить ярко.',
+    },
+    {
+      id: 'final_friend_2',
+      tag: 'Мечты',
+      text: 'Пусть все твои смелые идеи сбываются легко, а впереди будет море классных встреч, поездок и побед!',
+    },
+    {
+      id: 'final_friend_3',
+      tag: 'Рядом',
+      text: 'Очень рад, что мы дружим! Пусть в жизни всегда будет много поводов для искренней улыбки и радости.',
+    },
+    {
+      id: 'final_friend_4',
+      tag: 'Настроение',
+      text: 'Никогда не теряй свой яркий огонёк — пусть удача и вдохновение будут с тобой каждый день!',
+    },
+  ],
+  teacher: [
+    {
+      id: 'final_teacher_1',
+      tag: 'Благодарность',
+      text: 'Спасибо за знания, терпение и веру в каждого из нас! Вы зажигаете в учениках настоящие звёзды.',
+    },
+    {
+      id: 'final_teacher_2',
+      tag: 'Вдохновение',
+      text: 'Благодарим за увлекательные уроки, мудрые советы и теплоту. Желаем здоровья, радости и благодарных учеников!',
+    },
+    {
+      id: 'final_teacher_3',
+      tag: 'Свет знаний',
+      text: 'Пусть ваша доброта и преданность делу возвращаются к вам светлыми улыбками и новыми успехами!',
+    },
+    {
+      id: 'final_teacher_4',
+      tag: 'Пожелание',
+      text: 'От всей души желаем творческого вдохновения, душевного спокойствия и счастливых праздников!',
+    },
+  ],
+  birthday: [
+    {
+      id: 'final_bd_1',
+      tag: 'Главный праздник',
+      text: 'С днём рождения! Сияй ярко, верь в свои мечты и открывай самые удивительные галактики каждый день!',
+    },
+    {
+      id: 'final_bd_2',
+      tag: 'Желания',
+      text: 'Пусть всё загаданное сегодня обязательно сбудется, а рядом всегда будут верные друзья и любящая семья!',
+    },
+    {
+      id: 'final_bd_3',
+      tag: 'Впечатления',
+      text: 'Желаю года, полного счастливых открытий, тёплых встреч, смеха и приятных сюрпризов!',
+    },
+    {
+      id: 'final_bd_4',
+      tag: 'Сияние',
+      text: 'Пусть в твоей жизни всегда будет место чуду, вдохновению и большим победам. Будь счастлив каждый миг!',
+    },
+  ],
+  new_year: [
+    {
+      id: 'final_ny_1',
+      tag: 'Волшебство',
+      text: 'Пусть в новом году сбудется каждое загаданное желание, а рядом всегда будут тепло, уют и чудеса!',
+    },
+    {
+      id: 'final_ny_2',
+      tag: 'Новые горизонты',
+      text: 'Желаю, чтобы весь год сиял яркими событиями, приятными встречами и добрыми новостями!',
+    },
+    {
+      id: 'final_ny_3',
+      tag: 'Праздник',
+      text: 'Пусть в доме всегда царят радость, здоровье и согласие, а все мечты летят быстрее комет!',
+    },
+    {
+      id: 'final_ny_4',
+      tag: 'Счастье',
+      text: 'С Новым годом! Пусть каждая минута приносит улыбки, вдохновение и настоящую сказку.',
+    },
+  ],
+  warm: [
+    {
+      id: 'final_warm_1',
+      tag: 'Специально для тебя',
+      text: 'Это маленькое созвездие создано специально для тебя — помни, как ярко ты светишь и как много значишь!',
+    },
+    {
+      id: 'final_warm_2',
+      tag: 'Тёплые слова',
+      text: 'Пусть каждый твой день начинается с хорошего настроения, светлой улыбки и приятных мелочей!',
+    },
+    {
+      id: 'final_warm_3',
+      tag: 'Мечты',
+      text: 'Желаю, чтобы все добрые мечты сбывались легко, а рядом всегда были любимые люди и уют.',
+    },
+    {
+      id: 'final_warm_4',
+      tag: 'Благодарность',
+      text: 'Спасибо за свет и тепло, которыми ты делишься с миром. Пусть жизнь дарит только счастливые мгновения!',
+    },
+  ],
+};
+
+export function getFinalMessageSuggestions(
+  occasion: OccasionId,
+  recipientName?: string,
+): StarMessageSuggestion[] {
+  const tone = detectRecipientTone(occasion, recipientName);
+  const toneList = FINAL_TONE_MESSAGES[tone] ?? FINAL_TONE_MESSAGES.warm;
+  const occasionPreset = OCCASION_PRESETS.find((p) => p.id === occasion);
+  const combined: StarMessageSuggestion[] = occasionPreset
+    ? [
+        {
+          id: `final_preset_${occasionPreset.id}`,
+          tag: occasionPreset.label,
+          text: occasionPreset.defaultFinalMessage,
+        },
+        ...toneList,
+      ]
+    : [...toneList];
+
+  const seen = new Set<string>();
+  const unique: StarMessageSuggestion[] = [];
+  for (const item of combined) {
+    const clean = item.text.trim();
+    if (clean && !seen.has(clean)) {
+      seen.add(clean);
+      unique.push(item);
+    }
+  }
+  return unique;
+}
+
 const KNOWN_TITLES = new Set<string>();
 const KNOWN_MESSAGES = new Set<string>();
+const KNOWN_FINAL_MESSAGES = new Set<string>();
 
 function ensureKnownSetsBuilt() {
   if (KNOWN_TITLES.size > 0) return;
 
   for (const preset of OCCASION_PRESETS) {
+    KNOWN_FINAL_MESSAGES.add(preset.defaultFinalMessage.trim());
     for (const st of preset.starterStars) {
       KNOWN_TITLES.add(st.title.trim());
       KNOWN_MESSAGES.add(st.message.trim());
     }
+  }
+  for (const list of Object.values(FINAL_TONE_MESSAGES)) {
+    for (const m of list) KNOWN_FINAL_MESSAGES.add(m.text.trim());
   }
   for (const list of Object.values(STAR_IDEAS_BY_OCCASION)) {
     for (const idea of list) {
@@ -505,4 +697,11 @@ export function isPresetOrSuggestedMessage(message: string): boolean {
   if (!m) return true;
   ensureKnownSetsBuilt();
   return KNOWN_MESSAGES.has(m);
+}
+
+export function isPresetOrSuggestedFinalMessage(message: string): boolean {
+  const m = message.trim();
+  if (!m) return true;
+  ensureKnownSetsBuilt();
+  return KNOWN_FINAL_MESSAGES.has(m);
 }

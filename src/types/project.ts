@@ -175,6 +175,16 @@ export interface DeviceCardLayout {
   customHeightPx?: number;
 }
 
+export type EnvelopeShapeId = 'classic' | 'rounded';
+
+export type EnvelopeMotifId =
+  | 'none'
+  | 'heart'
+  | 'stars'
+  | 'moon'
+  | 'flower'
+  | 'butterfly';
+
 export interface EnvelopeSettings {
   kickerText?: string;
   headlineText?: string;
@@ -182,6 +192,12 @@ export interface EnvelopeSettings {
   ctaText?: string;
   envelopeColor?: string;
   sealColor?: string;
+  /** Envelope silhouette variant ('classic' | 'rounded') */
+  shape?: EnvelopeShapeId;
+  /** Optional small decorative picture/motif on envelope front corner */
+  motif?: EnvelopeMotifId;
+  /** Envelope & seal glow intensity multiplier (0..1.5, default 1) */
+  glowIntensity?: number;
   /** Legacy shared scale multiplier */
   scale?: number;
   /** Envelope visual scale multiplier for phone viewport (0.55..1.35) */
@@ -194,6 +210,12 @@ export interface EnvelopeSettings {
   phoneTextOffsetY?: number;
   /** Envelope header text vertical offset for desktop viewport (-20..100) */
   desktopTextOffsetY?: number;
+  /** Legacy shared bottom hint + CTA button vertical offset (-100..20) */
+  footerOffsetY?: number;
+  /** Envelope bottom hint + CTA button vertical offset for phone viewport (-100..20) */
+  phoneFooterOffsetY?: number;
+  /** Envelope bottom hint + CTA button vertical offset for desktop viewport (-100..20) */
+  desktopFooterOffsetY?: number;
   /** Legacy shared envelope vertical offset (-100..100) */
   offsetY?: number;
   /** Envelope vertical offset for phone viewport (-100..100) */
@@ -317,8 +339,16 @@ export function isStarFilled(star: ConstellationStar): boolean {
   return star.title.trim().length > 0 && star.message.trim().length > 0;
 }
 
+export function isStarUnsignedAndEmpty(star: ConstellationStar): boolean {
+  const cleanTitle = star.title.trim();
+  const hasCustomTitle =
+    cleanTitle.length > 0 && !/^Звезда\s+\d+$/.test(cleanTitle);
+  const hasMessage = star.message.trim().length > 0;
+  return !hasCustomTitle && !hasMessage;
+}
+
 export function isStarComplete(star: ConstellationStar): boolean {
-  return !star.isDraft && isStarFilled(star);
+  return isStarFilled(star);
 }
 
 export function canExportProject(project: ConstellationProject): boolean {

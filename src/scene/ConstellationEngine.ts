@@ -22,6 +22,7 @@ import {
   buildLegacySequentialConnections,
   computeEnvelopeWorldOffsetY,
   resolveEnvelopeEffectiveWorldScale,
+  resolveEnvelopeGlowIntensity,
   resolveEnvelopeOffsetY,
   resolveStarGlowHex,
   resolveStarShape,
@@ -49,6 +50,7 @@ import { EnvelopeProp } from './EnvelopeProp';
 
 export interface ConstellationEngineCallbacks {
   onSelectStar?: (starId: string) => void;
+  onHoverStar?: (starId: string | null, pos?: { x: number; y: number }) => void;
   onSelectConnection?: (connectionId: string | null) => void;
   onMoveStar?: (starId: string, position: StarPosition3D) => void;
   onDragStar?: (starId: string, position: StarPosition3D, isDepthDrag: boolean) => void;
@@ -455,6 +457,19 @@ export class ConstellationEngine {
     } else if (playIntroOnStart && !this.state.reducedMotion) {
       this.playIntro();
     }
+    this.syncBloomForSceneState();
+  }
+
+  private syncBloomForSceneState(): void {
+    if (!this.bloomPass) return;
+    if (this.sealedMode && !this.birthPlaying && !this.finalRevealPlaying) {
+      const g = Math.min(1.5, Math.max(0, resolveEnvelopeGlowIntensity(this.state.envelopeSettings)));
+      this.bloomPass.threshold = 1.04;
+      this.bloomPass.strength = Number((0.14 * g).toFixed(3));
+    } else {
+      this.bloomPass.threshold = 0.88;
+      this.bloomPass.strength = 0.22;
+    }
   }
 
   private getHeroShowcaseSlot(out: THREE.Vector3): { scale: number; isPortrait: boolean } {
@@ -527,6 +542,7 @@ export class ConstellationEngine {
     }
     this.cameraCtrl.setEnvelopeView();
     this.cameraCtrl.setOrbitEnabled(false);
+    this.syncBloomForSceneState();
   }
 
   /** Opens envelope into particles and births ONLY the first star into the left foreground slot */
@@ -557,6 +573,7 @@ export class ConstellationEngine {
     }
 
     this.cameraCtrl.setOrbitEnabled(false);
+    this.syncBloomForSceneState();
   }
 
   public skipBirthSequence(): void {
@@ -593,6 +610,7 @@ export class ConstellationEngine {
     this.lines.setRevealProgress(0);
     this.cameraCtrl.setStoryView(true);
     this.cameraCtrl.setOrbitEnabled(true);
+    this.syncBloomForSceneState();
     this.callbacks.onBirthComplete?.();
     this.callbacks.onIntroComplete?.();
   }
@@ -662,6 +680,7 @@ export class ConstellationEngine {
     this.particles.setFinaleActive(true);
     this.cameraCtrl.setFinaleFrameView(false);
     this.cameraCtrl.setOrbitEnabled(false);
+    this.syncBloomForSceneState();
   }
 
   public skipFinalReveal(): void {
@@ -691,6 +710,7 @@ export class ConstellationEngine {
     this.particles.setFinaleActive(true);
     this.cameraCtrl.setFinaleFrameView(true);
     this.cameraCtrl.setOrbitEnabled(true);
+    this.syncBloomForSceneState();
     this.callbacks.onFinalRevealComplete?.();
   }
 
@@ -743,7 +763,10 @@ export class ConstellationEngine {
       prev.paletteId !== next.paletteId ||
       prev.globalGlowColor !== next.globalGlowColor ||
       prev.envelopeSettings?.envelopeColor !== next.envelopeSettings?.envelopeColor ||
-      prev.envelopeSettings?.sealColor !== next.envelopeSettings?.sealColor
+      prev.envelopeSettings?.sealColor !== next.envelopeSettings?.sealColor ||
+      prev.envelopeSettings?.shape !== next.envelopeSettings?.shape ||
+      prev.envelopeSettings?.motif !== next.envelopeSettings?.motif ||
+      prev.envelopeSettings?.glowIntensity !== next.envelopeSettings?.glowIntensity
     ) {
       const palette = COSMIC_PALETTES[next.paletteId];
       const glowCfg = GLOW_COLORS[next.globalGlowColor];
@@ -756,6 +779,7 @@ export class ConstellationEngine {
 
     this.syncStars(next.stars, next.connections);
     this.applySceneState(next);
+    this.syncBloomForSceneState();
 
     if (
       next.interactionMode === 'recipient' &&
@@ -886,6 +910,7 @@ export class ConstellationEngine {
         }
         this.lines.setFinaleHighlight(false);
         this.particles.setFinaleActive(false);
+        this.syncBloomForSceneState();
         return;
       }
 
@@ -1024,6 +1049,7 @@ export class ConstellationEngine {
       (isArrangeMode || state.interactionMode === 'orbit' || state.interactionMode === 'connect');
     this.cameraCtrl.setControlsEnabled(orbitAllowed);
     this.cameraCtrl.setOrbitEnabled(orbitAllowed);
+    this.syncBloomForSceneState();
   }
 
   private syncDragPlane(
@@ -1121,6 +1147,10 @@ export class ConstellationEngine {
         if (hitId) {
           const node = this.starNodes.get(hitId);
           if (node) {
+            if (this.hoveredStarId !== null) {
+              this.hoveredStarId = null;
+              this.callbacks.onHoverStar?.(null);
+            }
             this.draggingStarId = hitId;
             this.draggingPointerId = e.pointerId;
             this.lastDragClientY = e.clientY;
@@ -1235,6 +1265,10 @@ export class ConstellationEngine {
         if (hitId !== this.hoveredStarId) {
           this.hoveredStarId = hitId;
           this.applySceneState(this.state);
+          this.callbacks.onHoverStar?.(
+            hitId,
+            hitId ? this.getStarScreenPos(hitId) : undefined,
+          );
         }
         if (hitId) {
           canvas.style.cursor =
@@ -1249,6 +1283,19 @@ export class ConstellationEngine {
         } else {
           canvas.style.cursor = 'default';
         }
+      }
+    };
+
+    const onPointerLeave = () => {
+      if (this.isDisposed) return;
+      if (this.hoveredStarId !== null) {
+        this.hoveredStarId = null;
+        this.applySceneState(this.state);
+        this.callbacks.onHoverStar?.(null);
+      }
+      if (this.hoveredEnvelope) {
+        this.hoveredEnvelope = false;
+        this.envelope?.setHovered(false);
       }
     };
 
@@ -1332,6 +1379,7 @@ export class ConstellationEngine {
     canvas.addEventListener('pointermove', onPointerMove);
     canvas.addEventListener('pointerup', onPointerUp);
     canvas.addEventListener('pointercancel', onPointerUp);
+    canvas.addEventListener('pointerleave', onPointerLeave);
     canvas.addEventListener('contextmenu', onContextMenu);
     window.addEventListener('keydown', onShiftKeyChange);
     window.addEventListener('keyup', onShiftKeyChange);
@@ -1363,6 +1411,7 @@ export class ConstellationEngine {
       canvas.removeEventListener('pointermove', onPointerMove);
       canvas.removeEventListener('pointerup', onPointerUp);
       canvas.removeEventListener('pointercancel', onPointerUp);
+      canvas.removeEventListener('pointerleave', onPointerLeave);
       canvas.removeEventListener('contextmenu', onContextMenu);
       window.removeEventListener('keydown', onShiftKeyChange);
       window.removeEventListener('keyup', onShiftKeyChange);
@@ -1370,6 +1419,19 @@ export class ConstellationEngine {
       canvas.removeEventListener('webglcontextrestored', onContextRestored);
       document.removeEventListener('visibilitychange', onVisibility);
       this.resizeObserver?.disconnect();
+    };
+  }
+
+  private getStarScreenPos(starId: string): { x: number; y: number } | undefined {
+    const node = this.starNodes.get(starId);
+    if (!node || !this.camera || !this.renderer) return undefined;
+    const width = Math.max(1, this.container.clientWidth || window.innerWidth);
+    const height = Math.max(1, this.container.clientHeight || window.innerHeight);
+    node.group.getWorldPosition(_worldTmp);
+    _worldTmp.project(this.camera);
+    return {
+      x: Math.round((_worldTmp.x * 0.5 + 0.5) * width),
+      y: Math.round((-_worldTmp.y * 0.5 + 0.5) * height),
     };
   }
 
@@ -1506,6 +1568,13 @@ export class ConstellationEngine {
     } else {
       this.frameId = requestAnimationFrame(tick);
     }
+  }
+
+  public stepSceneOnlyForExport(dt: number): void {
+    if (!this.renderer || this.isDisposed) return;
+    const safeDt = Math.min(0.1, Math.max(0.0001, dt));
+    this.elapsed += safeDt;
+    this.stepScene(safeDt);
   }
 
   public stepAndRenderForExport(dt: number): HTMLCanvasElement | null {

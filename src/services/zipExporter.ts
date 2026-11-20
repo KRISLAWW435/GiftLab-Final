@@ -62,7 +62,8 @@ export const STANDALONE_CSS = `
   .gl-2d-sealed-glow { position: absolute; inset: 0; pointer-events: none; z-index: 0; }
   .gl-2d-envelope { position: relative; z-index: 2; width: 300px; height: 186px; border-radius: 26px; border: 1px solid rgba(255,255,255,0.65); overflow: hidden; background: linear-gradient(155deg, rgba(255,255,255,0.28) 0%, rgba(235,232,255,0.16) 52%, rgba(255,255,255,0.08) 100%); backdrop-filter: blur(28px); -webkit-backdrop-filter: blur(28px); box-shadow: 0 26px 64px rgba(10,8,28,0.65), inset 0 1px 1px rgba(255,255,255,0.85), inset 0 -10px 24px rgba(139,92,246,0.16); display: flex; align-items: center; justify-content: center; }
   .gl-2d-envelope-flap { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; }
-  .gl-2d-seal { position: relative; z-index: 3; margin-top: 20px; width: 56px; height: 56px; border-radius: 999px; border: 1px solid rgba(255,255,255,0.75); }
+  .gl-2d-seal { position: relative; z-index: 3; margin-top: 20px; width: 56px; height: 56px; border-radius: 999px; border: 2px solid rgba(255,255,255,0.75); display: flex; align-items: center; justify-content: center; }
+  .gl-2d-motif { position: absolute; right: 14px; bottom: 12px; z-index: 3; width: 40px; height: 40px; border-radius: 999px; display: flex; align-items: center; justify-content: center; pointer-events: none; }
   .gl-2d-sealed-lbl { font-size: 12px; color: #cbd5e1; }
 
   /* Swipeable Borderless Star Story Experience */

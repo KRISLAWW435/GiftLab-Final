@@ -24,6 +24,7 @@ import {
   resolveMusicTrackName,
 } from '../scene/paletteConfig';
 import { saveAudioBlob } from '../services/database';
+import { FinalMessageIdeas } from './cardEditor/FinalMessageIdeas';
 import {
   formatAudioTime,
   resolveProjectMusicForPreview,
@@ -434,6 +435,13 @@ export function ConstellationSettings({
               className="gl-textarea resize-y leading-relaxed"
             />
           </label>
+
+          <FinalMessageIdeas
+            occasion={project.occasion}
+            recipientName={project.recipientName}
+            currentMessage={project.finalMessage}
+            onSelectMessage={(finalMessage) => onChange({ finalMessage })}
+          />
 
           {/* Recipient & Sender */}
           <div className="grid grid-cols-2 gap-2">

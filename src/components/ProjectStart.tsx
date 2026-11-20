@@ -1,13 +1,15 @@
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import {
   Copy,
   Eye,
   FolderOpen,
+  Play,
   Plus,
   Sparkles,
   Trash2,
 } from 'lucide-react';
 import { CompositionPresetPreview } from '../assets/shapePreviews';
+import { HeroVideoShowcase } from './HeroVideoShowcase';
 import {
   COMPOSITION_PRESETS,
   COSMIC_PALETTES,
@@ -47,6 +49,10 @@ export function ProjectStart({
   const [recipientInput, setRecipientInput] = useState('');
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
 
+  const formRef = useRef<HTMLFormElement | null>(null);
+  const titleInputRef = useRef<HTMLInputElement | null>(null);
+  const showcaseAnchorRef = useRef<HTMLDivElement | null>(null);
+
   const activePreset =
     OCCASION_PRESETS.find((p) => p.id === selectedOccasion) ?? OCCASION_PRESETS[2];
 
@@ -59,6 +65,17 @@ export function ProjectStart({
       selectedComposition,
     );
     onCreateProject(project);
+  };
+
+  const scrollToForm = () => {
+    formRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    window.setTimeout(() => {
+      titleInputRef.current?.focus();
+    }, 280);
+  };
+
+  const scrollToShowcase = () => {
+    showcaseAnchorRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
   };
 
   const formatDate = (ts: number) =>
@@ -99,10 +116,21 @@ export function ProjectStart({
                 добавь картинки и тёплые слова. Готовый подарок можно скачать одним
                 архивом — он откроется в браузере даже без интернета.
               </p>
+              <div className="pt-1">
+                <button
+                  type="button"
+                  onClick={scrollToShowcase}
+                  className="gl-btn-secondary !min-h-[42px] px-4 text-sm whitespace-nowrap shrink-0"
+                >
+                  <Play className="w-3.5 h-3.5" />
+                  Посмотреть видео-пример
+                </button>
+              </div>
             </div>
 
             {/* Creator Quick-Start Form */}
             <form
+              ref={formRef}
               onSubmit={handleCreate}
               className="lg:col-span-7 gl-card p-6 sm:p-7 space-y-6"
             >
@@ -156,6 +184,7 @@ export function ProjectStart({
                     Название созвездия
                   </span>
                   <input
+                    ref={titleInputRef}
                     type="text"
                     maxLength={50}
                     value={titleInput}
@@ -227,6 +256,11 @@ export function ProjectStart({
             сохраняйте готовый результат в ZIP.
           </div>
         </section>
+
+        {/* Live 9:16 Video Showcase & Guide */}
+        <div ref={showcaseAnchorRef} className="scroll-mt-6">
+          <HeroVideoShowcase onUseDemoTemplate={scrollToForm} />
+        </div>
 
         {/* Saved Projects List */}
         <section className="space-y-4">
